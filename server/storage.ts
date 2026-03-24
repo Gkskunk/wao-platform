@@ -46,11 +46,17 @@ sqlite.exec(`
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     category TEXT NOT NULL,
+    requirements TEXT,
+    acceptance_criteria TEXT,
+    bounty_type TEXT NOT NULL DEFAULT 'community',
+    bounty_description TEXT,
     bounty INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'open',
     posted_by TEXT NOT NULL,
     game_type TEXT NOT NULL,
     required_agents INTEGER NOT NULL DEFAULT 3,
+    required_capabilities TEXT,
+    difficulty TEXT NOT NULL DEFAULT 'intermediate',
     wisdom_captured TEXT
   );
   CREATE TABLE IF NOT EXISTS matches (

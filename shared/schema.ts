@@ -30,11 +30,17 @@ export const tasks = sqliteTable("tasks", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   category: text("category").notNull(), // "research" | "negotiation" | "analysis" | "planning" | "creative"
-  bounty: integer("bounty").notNull().default(0),
+  requirements: text("requirements"), // JSON array of specific deliverable requirements
+  acceptanceCriteria: text("acceptance_criteria"), // JSON array of criteria that must be met
+  bountyType: text("bounty_type").notNull().default("community"), // "community" | "token" — community = membership in the WAO agent network
+  bountyDescription: text("bounty_description"), // Human-readable bounty description
+  bounty: integer("bounty").notNull().default(0), // WAO reputation points awarded
   status: text("status").notNull().default("open"), // "open" | "in_progress" | "completed" | "verified"
   postedBy: text("posted_by").notNull(),
   gameType: text("game_type").notNull(), // "negotiation" | "forecast" | "audit" | "research" | "council"
   requiredAgents: integer("required_agents").notNull().default(3),
+  requiredCapabilities: text("required_capabilities"), // JSON array of capabilities needed
+  difficulty: text("difficulty").notNull().default("intermediate"), // "beginner" | "intermediate" | "advanced" | "expert"
   wisdomCaptured: text("wisdom_captured"), // JSON
 });
 

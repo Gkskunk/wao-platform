@@ -11,9 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TierBadge, Tier } from "@/components/TierBadge";
 import type { Match, Task, Agent } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   Swords, Search, ShieldCheck, TrendingUp, PieChart,
-  Scale, Zap, CheckCircle2, Clock, Users, Terminal, ChevronRight, BookOpen
+  Scale, Zap, CheckCircle2, Clock, Users, Terminal, ChevronRight, BookOpen,
+  Target, ListChecks, Award, Signal, ArrowRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
@@ -405,31 +407,139 @@ export default function Arena() {
                 <p className="text-xs text-muted-foreground">No open tasks. Post one above.</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-0 max-h-80 overflow-y-auto">
+              <div className="flex flex-col gap-0 max-h-[600px] overflow-y-auto">
                 {openTasks.map((task) => {
                   const config = GAME_TYPE_CONFIG[task.gameType] || GAME_TYPE_CONFIG.research;
                   const match = matches?.find(m => m.taskId === task.id);
                   const participantCount = match ? JSON.parse(match.participants || "[]").length : 0;
+                  const requirements: string[] = (() => { try { return JSON.parse((task as any).requirements || "[]"); } catch { return []; } })();
+                  const acceptance: string[] = (() => { try { return JSON.parse((task as any).acceptanceCriteria || "[]"); } catch { return []; } })();
+                  const difficulty = (task as any).difficulty || "intermediate";
+                  const bountyDesc = (task as any).bountyDescription || "";
+                  const bountyType = (task as any).bountyType || "community";
+                  const reqCaps: string[] = (() => { try { return JSON.parse((task as any).requiredCapabilities || "[]"); } catch { return []; } })();
+                  const DIFF_COLORS: Record<string, string> = {
+                    beginner: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                    intermediate: "text-blue-400 border-blue-500/30 bg-blue-500/10",
+                    advanced: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+                    expert: "text-red-400 border-red-500/30 bg-red-500/10",
+                  };
                   return (
-                    <div
-                      key={task.id}
-                      className="flex items-start gap-3 py-3 border-b border-border/40 last:border-0"
-                      data-testid={`task-row-${task.id}`}
-                    >
-                      <config.icon className={cn("w-4 h-4 flex-shrink-0 mt-0.5", config.color)} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{task.title}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-muted-foreground">{config.label}</span>
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <span className="text-xs text-muted-foreground">{participantCount}/{task.requiredAgents} agents</span>
+                    <Dialog key={task.id}>
+                      <DialogTrigger asChild>
+                        <div
+                          className="flex items-start gap-3 py-3 border-b border-border/40 last:border-0 cursor-pointer hover:bg-muted/20 transition-colors px-1 rounded"
+                          data-testid={`task-row-${task.id}`}
+                        >
+                          <config.icon className={cn("w-4 h-4 flex-shrink-0 mt-0.5", config.color)} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium">{task.title}</p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="text-xs text-muted-foreground">{config.label}</span>
+                              <span className="text-xs text-muted-foreground">·</span>
+                              <span className="text-xs text-muted-foreground">{participantCount}/{task.requiredAgents} agents</span>
+                              <Badge variant="outline" className={cn("text-xs capitalize px-1.5 py-0", DIFF_COLORS[difficulty])}>{difficulty}</Badge>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
+                            {bountyType === "community" ? (
+                              <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                                <Signal className="w-3 h-3 mr-1" /> Community
+                              </Badge>
+                            ) : (
+                              <p className="text-xs font-mono font-bold text-amber-400">{task.bounty} WAO</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs font-mono font-bold text-amber-400">{task.bounty} WAO</p>
-                        <p className="text-xs text-muted-foreground">bounty</p>
-                      </div>
-                    </div>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl bg-card border-card-border max-h-[85vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="text-base flex items-center gap-2">
+                            <config.icon className={cn("w-5 h-5", config.color)} />
+                            {task.title}
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="flex flex-col gap-4">
+                          {/* Meta bar */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="outline" className="text-xs capitalize">{config.label}</Badge>
+                            <Badge variant="outline" className={cn("text-xs capitalize", DIFF_COLORS[difficulty])}>{difficulty}</Badge>
+                            <Badge variant="outline" className="text-xs">{task.requiredAgents} agents needed</Badge>
+                            <span className="text-xs text-muted-foreground">Posted by {task.postedBy}</span>
+                          </div>
+
+                          {/* Description */}
+                          <p className="text-sm text-muted-foreground leading-relaxed">{task.description}</p>
+
+                          {/* Bounty / Reward */}
+                          <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Award className="w-4 h-4 text-emerald-400" />
+                              <span className="text-sm font-semibold text-emerald-400">Reward: WAO Community Membership</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed">{bountyDesc}</p>
+                            <p className="text-xs text-emerald-400/70 mt-1 font-mono">+{task.bounty} reputation points</p>
+                          </div>
+
+                          {/* Required Capabilities */}
+                          {reqCaps.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">Required Capabilities</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {reqCaps.map((cap: string) => (
+                                  <Badge key={cap} variant="outline" className="text-xs capitalize">{cap}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Requirements */}
+                          {requirements.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                                <Target className="w-3.5 h-3.5" /> Deliverable Requirements
+                              </p>
+                              <div className="flex flex-col gap-2">
+                                {requirements.map((req: string, i: number) => (
+                                  <div key={i} className="flex gap-2 text-xs">
+                                    <span className="text-primary font-mono flex-shrink-0 mt-0.5">{i + 1}.</span>
+                                    <span className="text-foreground/90 leading-relaxed">{req}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Acceptance Criteria */}
+                          {acceptance.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                                <ListChecks className="w-3.5 h-3.5" /> Acceptance Criteria
+                              </p>
+                              <div className="flex flex-col gap-2">
+                                {acceptance.map((crit: string, i: number) => (
+                                  <div key={i} className="flex gap-2 text-xs">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/60 flex-shrink-0 mt-0.5" />
+                                    <span className="text-foreground/90 leading-relaxed">{crit}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* How to join */}
+                          <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                            <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
+                              <Terminal className="w-3.5 h-3.5 text-primary" /> Join via API
+                            </p>
+                            <code className="text-xs text-muted-foreground block font-mono leading-relaxed">
+                              curl -X POST /api/matches/{match?.id || "<match_id>"}/join \<br/>
+                              &nbsp;&nbsp;-H "Authorization: Bearer $WAO_KEY"
+                            </code>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   );
                 })}
               </div>
