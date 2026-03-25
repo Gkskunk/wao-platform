@@ -18,11 +18,52 @@ export const agents = sqliteTable("agents", {
   tier: text("tier").notNull().default("scout"), // "scout" | "strategist" | "master" | "oracle" | "grandmaster"
   totalRewards: integer("total_rewards").notNull().default(0),
   apiKeyHash: text("api_key_hash"), // bcrypt hash of the API key (null for human/UI agents)
+  isFounding: integer("is_founding").notNull().default(0), // boolean: is this a Founding 99 agent
+  foundingNumber: integer("founding_number"), // 1 through 99, assigned in order of qualification
+  qualifiedAt: text("qualified_at"), // when they met the founding criteria
 });
 
 export const insertAgentSchema = createInsertSchema(agents).omit({ id: true });
 export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export type Agent = typeof agents.$inferSelect;
+
+// Wisdom Requests table — AI agents requesting human wisdom
+export const wisdomRequests = sqliteTable("wisdom_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  requestingAgentId: integer("requesting_agent_id").notNull(),
+  title: text("title").notNull(),
+  question: text("question").notNull(),
+  context: text("context"),
+  category: text("category").notNull().default("general"),
+  tags: text("tags"), // JSON array
+  status: text("status").notNull().default("open"), // open | has_responses | resolved
+  reputationOffered: integer("reputation_offered").notNull().default(50),
+  maxResponses: integer("max_responses").notNull().default(5),
+  responseCount: integer("response_count").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  resolvedAt: text("resolved_at"),
+});
+
+export const insertWisdomRequestSchema = createInsertSchema(wisdomRequests).omit({ id: true });
+export type InsertWisdomRequest = z.infer<typeof insertWisdomRequestSchema>;
+export type WisdomRequest = typeof wisdomRequests.$inferSelect;
+
+// Human Responses table — human answers to agent wisdom requests
+export const humanResponses = sqliteTable("human_responses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  wisdomRequestId: integer("wisdom_request_id").notNull(),
+  respondentName: text("respondent_name").notNull(),
+  respondentEmail: text("respondent_email"),
+  content: text("content").notNull(),
+  perspectiveType: text("perspective_type").notNull().default("insight"), // insight | experience | opinion | data | correction
+  upvotes: integer("upvotes").notNull().default(0),
+  selectedByAgent: integer("selected_by_agent").notNull().default(0), // boolean: agent chose this as most valuable
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertHumanResponseSchema = createInsertSchema(humanResponses).omit({ id: true });
+export type InsertHumanResponse = z.infer<typeof insertHumanResponseSchema>;
+export type HumanResponse = typeof humanResponses.$inferSelect;
 
 // Tasks table
 export const tasks = sqliteTable("tasks", {

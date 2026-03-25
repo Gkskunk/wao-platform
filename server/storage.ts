@@ -1,7 +1,7 @@
 import {
   agents, tasks, matches, wisdomEntries,
   messages, reputationHistory, achievements, constitutionArticles, amendments,
-  moves, events, workItems, verifications,
+  moves, events, workItems, verifications, wisdomRequests, humanResponses,
   type Agent, type InsertAgent,
   type Task, type InsertTask,
   type Match, type InsertMatch,
@@ -15,6 +15,8 @@ import {
   type Event, type InsertEvent,
   type WorkItem, type InsertWorkItem,
   type Verification, type InsertVerification,
+  type WisdomRequest, type InsertWisdomRequest,
+  type HumanResponse, type InsertHumanResponse,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -41,7 +43,10 @@ sqlite.exec(`
     status TEXT NOT NULL DEFAULT 'idle',
     tier TEXT NOT NULL DEFAULT 'scout',
     total_rewards INTEGER NOT NULL DEFAULT 0,
-    api_key_hash TEXT
+    api_key_hash TEXT,
+    is_founding INTEGER NOT NULL DEFAULT 0,
+    founding_number INTEGER,
+    qualified_at TEXT
   );
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,7 +178,44 @@ sqlite.exec(`
     improvement TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS wisdom_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requesting_agent_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    question TEXT NOT NULL,
+    context TEXT,
+    category TEXT NOT NULL DEFAULT 'general',
+    tags TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    reputation_offered INTEGER NOT NULL DEFAULT 50,
+    max_responses INTEGER NOT NULL DEFAULT 5,
+    response_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS human_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wisdom_request_id INTEGER NOT NULL,
+    respondent_name TEXT NOT NULL,
+    respondent_email TEXT,
+    content TEXT NOT NULL,
+    perspective_type TEXT NOT NULL DEFAULT 'insight',
+    upvotes INTEGER NOT NULL DEFAULT 0,
+    selected_by_agent INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
 `);
+
+// Add missing columns to existing agents table (ALTER TABLE for existing DBs)
+try {
+  sqlite.exec(`ALTER TABLE agents ADD COLUMN is_founding INTEGER NOT NULL DEFAULT 0`);
+} catch (_) { /* column already exists */ }
+try {
+  sqlite.exec(`ALTER TABLE agents ADD COLUMN founding_number INTEGER`);
+} catch (_) { /* column already exists */ }
+try {
+  sqlite.exec(`ALTER TABLE agents ADD COLUMN qualified_at TEXT`);
+} catch (_) { /* column already exists */ }
 
 export interface IStorage {
   // Agents
@@ -255,8 +297,26 @@ export interface IStorage {
     topVerifiers: { agentId: number; count: number }[];
   }>;
 
+  // Wisdom Requests
+  getWisdomRequests(status?: string, category?: string): Promise<WisdomRequest[]>;
+  getWisdomRequest(id: number): Promise<WisdomRequest | undefined>;
+  createWisdomRequest(req: InsertWisdomRequest): Promise<WisdomRequest>;
+  updateWisdomRequest(id: number, updates: Partial<InsertWisdomRequest>): Promise<WisdomRequest | undefined>;
+
+  // Human Responses
+  getHumanResponsesByRequest(wisdomRequestId: number): Promise<HumanResponse[]>;
+  createHumanResponse(resp: InsertHumanResponse): Promise<HumanResponse>;
+  selectHumanResponse(id: number): Promise<HumanResponse | undefined>;
+  upvoteHumanResponse(id: number): Promise<HumanResponse | undefined>;
+
+  // Founding Agents
+  getFoundingAgents(): Promise<Agent[]>;
+  getFoundingAgentCount(): Promise<number>;
+  checkAndGrantFoundingStatus(agentId: number): Promise<boolean>;
+
   // Seed check
   isSeeded(): Promise<boolean>;
+  isWisdomSeeded(): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -523,6 +583,103 @@ export class DatabaseStorage implements IStorage {
   async isSeeded(): Promise<boolean> {
     const count = db.select().from(agents).all();
     return count.length > 0;
+  }
+
+  async isWisdomSeeded(): Promise<boolean> {
+    const count = db.select().from(wisdomRequests).all();
+    return count.length > 0;
+  }
+
+  async getWisdomRequests(status?: string, category?: string): Promise<WisdomRequest[]> {
+    let all = db.select().from(wisdomRequests).orderBy(desc(wisdomRequests.createdAt)).all();
+    if (status) all = all.filter(r => r.status === status);
+    if (category) all = all.filter(r => r.category === category);
+    return all;
+  }
+
+  async getWisdomRequest(id: number): Promise<WisdomRequest | undefined> {
+    return db.select().from(wisdomRequests).where(eq(wisdomRequests.id, id)).get();
+  }
+
+  async createWisdomRequest(req: InsertWisdomRequest): Promise<WisdomRequest> {
+    return db.insert(wisdomRequests).values(req).returning().get();
+  }
+
+  async updateWisdomRequest(id: number, updates: Partial<InsertWisdomRequest>): Promise<WisdomRequest | undefined> {
+    return db.update(wisdomRequests).set(updates).where(eq(wisdomRequests.id, id)).returning().get();
+  }
+
+  async getHumanResponsesByRequest(wisdomRequestId: number): Promise<HumanResponse[]> {
+    return db.select().from(humanResponses)
+      .where(eq(humanResponses.wisdomRequestId, wisdomRequestId))
+      .orderBy(desc(humanResponses.upvotes))
+      .all();
+  }
+
+  async createHumanResponse(resp: InsertHumanResponse): Promise<HumanResponse> {
+    return db.insert(humanResponses).values(resp).returning().get();
+  }
+
+  async selectHumanResponse(id: number): Promise<HumanResponse | undefined> {
+    return db.update(humanResponses)
+      .set({ selectedByAgent: 1 })
+      .where(eq(humanResponses.id, id))
+      .returning()
+      .get();
+  }
+
+  async upvoteHumanResponse(id: number): Promise<HumanResponse | undefined> {
+    const resp = db.select().from(humanResponses).where(eq(humanResponses.id, id)).get();
+    if (!resp) return undefined;
+    return db.update(humanResponses)
+      .set({ upvotes: resp.upvotes + 1 })
+      .where(eq(humanResponses.id, id))
+      .returning()
+      .get();
+  }
+
+  async getFoundingAgents(): Promise<Agent[]> {
+    return db.select().from(agents)
+      .all()
+      .filter(a => a.isFounding === 1)
+      .sort((a, b) => (a.foundingNumber ?? 999) - (b.foundingNumber ?? 999));
+  }
+
+  async getFoundingAgentCount(): Promise<number> {
+    return db.select().from(agents).all().filter(a => a.isFounding === 1).length;
+  }
+
+  async checkAndGrantFoundingStatus(agentId: number): Promise<boolean> {
+    const agent = db.select().from(agents).where(eq(agents.id, agentId)).get();
+    if (!agent) return false;
+    if (agent.isFounding === 1) return false; // already founding
+    if (agent.type !== "ai") return false;
+
+    // Count verified work items with quality >= 0.7
+    const allItems = db.select().from(workItems)
+      .all()
+      .filter(w => w.submitterAgentId === agentId && w.status === "verified" && (w.qualityScore ?? 0) >= 70);
+
+    // Count completed verifications by this agent
+    const allVerifs = db.select().from(verifications)
+      .all()
+      .filter(v => v.verifierAgentId === agentId);
+
+    if (allItems.length < 3 || allVerifs.length < 2) return false;
+
+    // Check total founding agents < 99
+    const foundingCount = db.select().from(agents).all().filter(a => a.isFounding === 1).length;
+    if (foundingCount >= 99) return false;
+
+    // Grant founding status
+    const now = new Date().toISOString();
+    await db.update(agents).set({
+      isFounding: 1,
+      foundingNumber: foundingCount + 1,
+      qualifiedAt: now,
+    }).where(eq(agents.id, agentId)).run();
+
+    return true;
   }
 }
 

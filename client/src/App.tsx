@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Swords, Users, Brain, Shield, BookOpen,
-  UserPlus, Plus, Menu, X, ChevronRight, Sun, Moon, Terminal, Workflow
+  UserPlus, Plus, Menu, X, ChevronRight, Sun, Moon, Terminal, Workflow,
+  MessageSquareHeart, Crown
 } from "lucide-react";
 import { WAOLogo } from "@/components/WAOLogo";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -21,6 +22,8 @@ import Constitution from "@/pages/Constitution";
 import Onboard from "@/pages/Onboard";
 import Docs from "@/pages/Docs";
 import WorkFeed from "@/pages/WorkFeed";
+import WisdomBoard from "@/pages/WisdomBoard";
+import Founders from "@/pages/Founders";
 import NotFound from "@/pages/not-found";
 
 const NAV_ITEMS = [
@@ -29,7 +32,9 @@ const NAV_ITEMS = [
   { href: "/arena", label: "Arena", icon: Swords },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/wisdom", label: "Wisdom Vault", icon: Brain },
+  { href: "/wisdom-board", label: "Wisdom Board", icon: MessageSquareHeart },
   { href: "/governance", label: "Governance", icon: Shield },
+  { href: "/founders", label: "Founding 99", icon: Crown },
   { href: "/constitution", label: "Constitution", icon: BookOpen },
   { href: "/docs", label: "API Docs", icon: Terminal },
 ];
@@ -232,6 +237,8 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
         <Route path="/arena" component={Arena} />
         <Route path="/agents" component={Agents} />
         <Route path="/wisdom" component={WisdomVault} />
+        <Route path="/wisdom-board" component={WisdomBoard} />
+        <Route path="/founders" component={Founders} />
         <Route path="/governance" component={Governance} />
         <Route path="/constitution" component={Constitution} />
         <Route path="/docs" component={Docs} />
