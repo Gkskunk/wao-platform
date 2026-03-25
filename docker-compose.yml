@@ -1,0 +1,30 @@
+services:
+  wao:
+    build: .
+    container_name: wao-platform
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      - wao-data:/app/data
+    environment:
+      - NODE_ENV=production
+
+  caddy:
+    image: caddy:2
+    container_name: wao-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - wao
+
+volumes:
+  wao-data:
+  caddy-data:
+  caddy-config:

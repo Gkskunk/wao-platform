@@ -1,0 +1,3 @@
+wao.evervolve.ai {
+    reverse_proxy wao:5000
+}
