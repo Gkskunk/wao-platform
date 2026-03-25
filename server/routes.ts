@@ -1134,6 +1134,347 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ],
     });
   });
+
+  // ──────────────────────────────────────────────────────────────
+  // AUTO-GAMIFICATION: Work Items & Verifications
+  // ──────────────────────────────────────────────────────────────
+
+  // Auto-detect category from question keywords
+  function detectCategory(question: string): string {
+    const q = question.toLowerCase();
+    if (/research|find|what are|compare|analyze|list|identify/.test(q)) return "research";
+    if (/plan|strategy|how should|design|propose|allocate|schedule/.test(q)) return "planning";
+    if (/negotiate|terms|pricing|deal|proposal|contract/.test(q)) return "negotiation";
+    if (/audit|verify|check|validate|assess|evaluate/.test(q)) return "analysis";
+    if (/create|write|generate|produce|draft/.test(q)) return "creative";
+    return "general";
+  }
+
+  // GET /api/work/stats — must be before /api/work/:id to avoid route collision
+  app.get("/api/work/stats", async (req: Request, res: Response) => {
+    const stats = await storage.getWorkStats();
+    // Enrich top contributors and verifiers with agent names
+    const allAgents = await storage.getAgents();
+    const agentMap: Record<number, string> = {};
+    allAgents.forEach(a => { agentMap[a.id] = a.name; });
+    res.json({
+      ...stats,
+      topContributors: stats.topContributors.map(c => ({ ...c, agentName: agentMap[c.agentId] || "Unknown" })),
+      topVerifiers: stats.topVerifiers.map(v => ({ ...v, agentName: agentMap[v.agentId] || "Unknown" })),
+    });
+  });
+
+  // GET /api/work/pending-reviews — work needing verification (excludes own)
+  app.get("/api/work/pending-reviews", authenticate, async (req: Request, res: Response) => {
+    const agent = (req as any).agent;
+    const items = await storage.getWorkItems(undefined, undefined, undefined);
+    // Items that are submitted or under_review, not submitted by this agent
+    const pending = items.filter(w =>
+      (w.status === "submitted" || w.status === "under_review") &&
+      w.submitterAgentId !== agent.id
+    );
+    // For each, check that this agent hasn't already verified it
+    const result = [];
+    for (const item of pending) {
+      const existing = await storage.getVerificationByAgentAndItem(item.id, agent.id);
+      if (existing) continue;
+      const verifs = await storage.getVerificationsByWorkItem(item.id);
+      const submitter = await storage.getAgent(item.submitterAgentId);
+      const reputationReward = Math.floor((item.reputationPool * item.verifierShare / 100) / item.requiredVerifiers);
+      result.push({
+        workItemId: item.id,
+        question: item.question,
+        answer: item.answer,
+        submittedBy: submitter?.name || "Unknown",
+        category: item.category,
+        sourcePlatform: item.sourcePlatform,
+        tags: item.tags ? JSON.parse(item.tags) : [],
+        reputationReward,
+        currentVerifications: verifs.length,
+        requiredVerifications: item.requiredVerifiers,
+        createdAt: item.createdAt,
+      });
+    }
+    res.json({ pendingReviews: result });
+  });
+
+  // POST /api/work/submit — agent submits Q&A pair
+  app.post("/api/work/submit", authenticate, async (req: Request, res: Response) => {
+    const agent = (req as any).agent;
+    const schema = z.object({
+      question: z.string().min(1),
+      answer: z.string().min(1),
+      category: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      sourcePlatform: z.string().optional(),
+      reputationPool: z.number().int().positive().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    const { question, answer, category, tags, sourcePlatform, reputationPool } = parsed.data;
+
+    const detectedCategory = category || detectCategory(question);
+    const now = new Date().toISOString();
+    const pool = reputationPool || 100;
+
+    // Check if other agents exist for verification
+    const allAgents = await storage.getAgents();
+    const otherAgents = allAgents.filter(a => a.id !== agent.id);
+    const status = otherAgents.length > 0 ? "under_review" : "submitted";
+
+    const workItem = await storage.createWorkItem({
+      question,
+      answer,
+      submitterAgentId: agent.id,
+      category: detectedCategory,
+      autoGameType: "audit",
+      status,
+      reputationPool: pool,
+      submitterShare: 60,
+      verifierShare: 40,
+      requiredVerifiers: 2,
+      qualityScore: null,
+      tags: tags ? JSON.stringify(tags) : null,
+      sourcePlatform: sourcePlatform || null,
+      createdAt: now,
+      verifiedAt: null,
+    });
+
+    // Also create an associated arena task
+    await storage.createTask({
+      title: question.length > 80 ? question.slice(0, 77) + "..." : question,
+      description: `Auto-gamified from agent submission. Answer: ${answer.slice(0, 200)}`,
+      category: detectedCategory,
+      gameType: "audit",
+      requiredAgents: 2,
+      bounty: Math.floor(pool * 0.4),
+      bountyType: "community",
+      bountyDescription: `${Math.floor(pool * 0.4)} reputation for verification`,
+      status: "open",
+      postedBy: agent.name,
+      difficulty: "intermediate",
+      requirements: null,
+      acceptanceCriteria: null,
+      wisdomCaptured: null,
+    });
+
+    // Create event
+    await storage.createEvent({
+      type: "work_submitted",
+      agentId: agent.id,
+      matchId: null,
+      taskId: null,
+      description: `${agent.name} submitted work: "${question.slice(0, 60)}${question.length > 60 ? "..." : ""}"`,
+      metadata: JSON.stringify({ workItemId: workItem.id, category: detectedCategory }),
+      createdAt: now,
+    });
+
+    const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    return res.status(201).json({
+      workItemId: workItem.id,
+      status: workItem.status,
+      message: `Work submitted. ${workItem.requiredVerifiers} verifications required before reputation is awarded.`,
+      reputationPool: pool,
+      yourShare: Math.floor(pool * 0.6),
+      verificationDeadline: deadline,
+    });
+  });
+
+  // POST /api/work/:id/verify — submit a verification
+  app.post("/api/work/:id/verify", authenticate, async (req: Request, res: Response) => {
+    const agent = (req as any).agent;
+    const workItemId = parseInt(req.params.id);
+    if (isNaN(workItemId)) return res.status(400).json({ error: "Invalid work item ID" });
+
+    const workItem = await storage.getWorkItem(workItemId);
+    if (!workItem) return res.status(404).json({ error: "Work item not found" });
+    if (workItem.submitterAgentId === agent.id) return res.status(403).json({ error: "Cannot verify your own work" });
+    if (workItem.status === "verified" || workItem.status === "disputed") {
+      return res.status(409).json({ error: "Work item already finalized" });
+    }
+
+    const existing = await storage.getVerificationByAgentAndItem(workItemId, agent.id);
+    if (existing) return res.status(409).json({ error: "You have already verified this work item" });
+
+    const schema = z.object({
+      verdict: z.enum(["approve", "flag", "improve"]),
+      score: z.number().min(0).max(1),
+      feedback: z.string().optional(),
+      improvement: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    const { verdict, score, feedback, improvement } = parsed.data;
+
+    const now = new Date().toISOString();
+    const verification = await storage.createVerification({
+      workItemId,
+      verifierAgentId: agent.id,
+      verdict,
+      score: Math.round(score * 100), // store as integer
+      feedback: feedback || null,
+      improvement: improvement || null,
+      createdAt: now,
+    });
+
+    // Create event
+    await storage.createEvent({
+      type: "work_verified",
+      agentId: agent.id,
+      matchId: null,
+      taskId: null,
+      description: `${agent.name} verified work item #${workItemId} (verdict: ${verdict}, score: ${Math.round(score * 100)}%)`,
+      metadata: JSON.stringify({ workItemId, verdict, score }),
+      createdAt: now,
+    });
+
+    // Check if we have enough verifications
+    const allVerifs = await storage.getVerificationsByWorkItem(workItemId);
+    if (allVerifs.length >= workItem.requiredVerifiers) {
+      // Calculate average quality score
+      const avgScore = allVerifs.reduce((sum, v) => sum + v.score, 0) / allVerifs.length;
+      const avgScoreFloat = avgScore / 100;
+      const isVerified = avgScoreFloat >= 0.6;
+      const newStatus = isVerified ? "verified" : "disputed";
+
+      await storage.updateWorkItem(workItemId, {
+        status: newStatus,
+        qualityScore: Math.round(avgScore),
+        verifiedAt: now,
+      });
+
+      // Distribute reputation
+      const submitterRep = isVerified
+        ? Math.floor(workItem.reputationPool * (workItem.submitterShare / 100) * avgScoreFloat)
+        : 0;
+      const verifierRep = Math.floor((workItem.reputationPool * (workItem.verifierShare / 100)) / allVerifs.length);
+
+      // Award submitter
+      if (submitterRep > 0) {
+        const submitter = await storage.getAgent(workItem.submitterAgentId);
+        if (submitter) {
+          const newRep = submitter.reputation + submitterRep;
+          const newTier = calculateTier(newRep);
+          await storage.updateAgent(workItem.submitterAgentId, { reputation: newRep, tier: newTier, totalRewards: submitter.totalRewards + submitterRep });
+          await storage.createRepHistory({ agentId: workItem.submitterAgentId, reputation: newRep, change: submitterRep, reason: `Work verified (quality: ${Math.round(avgScoreFloat * 100)}%)`, createdAt: now });
+          await storage.createEvent({ type: "reputation_changed", agentId: workItem.submitterAgentId, matchId: null, taskId: null, description: `${submitter.name} earned ${submitterRep} reputation for verified work`, metadata: JSON.stringify({ change: submitterRep, workItemId }), createdAt: now });
+        }
+      }
+
+      // Award each verifier
+      for (const v of allVerifs) {
+        const verifier = await storage.getAgent(v.verifierAgentId);
+        if (verifier) {
+          const newRep = verifier.reputation + verifierRep;
+          const newTier = calculateTier(newRep);
+          await storage.updateAgent(v.verifierAgentId, { reputation: newRep, tier: newTier, totalRewards: verifier.totalRewards + verifierRep });
+          await storage.createRepHistory({ agentId: v.verifierAgentId, reputation: newRep, change: verifierRep, reason: `Verified work item #${workItemId}`, createdAt: now });
+          await storage.createEvent({ type: "reputation_changed", agentId: v.verifierAgentId, matchId: null, taskId: null, description: `${verifier.name} earned ${verifierRep} reputation for verifying work`, metadata: JSON.stringify({ change: verifierRep, workItemId }), createdAt: now });
+        }
+      }
+
+      // Auto-create wisdom entry for high-quality work
+      if (isVerified && avgScoreFloat >= 0.8) {
+        const wisdomContent = `Q: ${workItem.question}\n\nA: ${workItem.answer}`;
+        const categoryMap: Record<string, string> = {
+          research: "Market Intelligence",
+          planning: "Strategy",
+          negotiation: "Strategy",
+          analysis: "Technical Insight",
+          creative: "Cultural Wisdom",
+          general: "Technical Insight",
+        };
+        await storage.createWisdomEntry({
+          content: wisdomContent,
+          category: categoryMap[workItem.category] || "Technical Insight",
+          contributorId: workItem.submitterAgentId,
+          matchId: null,
+          upvotes: 0,
+          verified: 1,
+        });
+        await storage.createEvent({ type: "wisdom_added", agentId: workItem.submitterAgentId, matchId: null, taskId: null, description: `High-quality work auto-added to Wisdom Vault (score: ${Math.round(avgScoreFloat * 100)}%)`, metadata: JSON.stringify({ workItemId }), createdAt: now });
+      }
+
+      return res.json({
+        verification,
+        workItem: await storage.getWorkItem(workItemId),
+        status: newStatus,
+        message: isVerified ? `Work verified! Reputation distributed. Submitter: +${submitterRep}, each verifier: +${verifierRep}` : `Work disputed (avg score: ${Math.round(avgScoreFloat * 100)}%). Verifiers still rewarded.`,
+        reputationAwarded: { submitter: submitterRep, eachVerifier: verifierRep },
+      });
+    }
+
+    // Not enough verifications yet — update status to under_review if needed
+    if (workItem.status === "submitted") {
+      await storage.updateWorkItem(workItemId, { status: "under_review" });
+    }
+
+    return res.json({
+      verification,
+      message: `Verification recorded. ${allVerifs.length}/${workItem.requiredVerifiers} verifications in.`,
+      currentVerifications: allVerifs.length,
+      requiredVerifications: workItem.requiredVerifiers,
+    });
+  });
+
+  // GET /api/work — list all work items with filters
+  app.get("/api/work", async (req: Request, res: Response) => {
+    const { status, agentId, category } = req.query;
+    const items = await storage.getWorkItems(
+      status as string | undefined,
+      agentId ? parseInt(agentId as string) : undefined,
+      category as string | undefined
+    );
+    // Enrich with agent names and verification counts
+    const allAgents = await storage.getAgents();
+    const agentMap: Record<number, string> = {};
+    allAgents.forEach(a => { agentMap[a.id] = a.name; });
+    const enriched = await Promise.all(items.map(async item => {
+      const verifs = await storage.getVerificationsByWorkItem(item.id);
+      return {
+        ...item,
+        tags: item.tags ? JSON.parse(item.tags) : [],
+        qualityScore: item.qualityScore !== null ? item.qualityScore / 100 : null,
+        submitterName: agentMap[item.submitterAgentId] || "Unknown",
+        verificationCount: verifs.length,
+      };
+    }));
+    res.json(enriched);
+  });
+
+  // GET /api/work/:id — full work item detail with verifications
+  app.get("/api/work/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const item = await storage.getWorkItem(id);
+    if (!item) return res.status(404).json({ error: "Work item not found" });
+    const verifs = await storage.getVerificationsByWorkItem(id);
+    const allAgents = await storage.getAgents();
+    const agentMap: Record<number, string> = {};
+    allAgents.forEach(a => { agentMap[a.id] = a.name; });
+    const qualScore = item.qualityScore !== null ? item.qualityScore / 100 : null;
+    const submitterRep = qualScore !== null && item.status === "verified"
+      ? Math.floor(item.reputationPool * (item.submitterShare / 100) * qualScore)
+      : null;
+    const verifierRep = verifs.length > 0
+      ? Math.floor((item.reputationPool * (item.verifierShare / 100)) / verifs.length)
+      : Math.floor((item.reputationPool * (item.verifierShare / 100)) / item.requiredVerifiers);
+    res.json({
+      ...item,
+      tags: item.tags ? JSON.parse(item.tags) : [],
+      qualityScore: qualScore,
+      submitterName: agentMap[item.submitterAgentId] || "Unknown",
+      verifications: verifs.map(v => ({
+        ...v,
+        score: v.score / 100,
+        verifierName: agentMap[v.verifierAgentId] || "Unknown",
+      })),
+      reputationDistribution: {
+        submitter: submitterRep,
+        eachVerifier: verifierRep,
+      },
+    });
+  });
 }
 
 // Re-export for server/index.ts compatibility

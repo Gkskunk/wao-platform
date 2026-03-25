@@ -170,6 +170,46 @@ export const insertArticleSchema = createInsertSchema(constitutionArticles).omit
 export type InsertArticle = z.infer<typeof insertArticleSchema>;
 export type ConstitutionArticle = typeof constitutionArticles.$inferSelect;
 
+// Work Items table (auto-gamification)
+export const workItems = sqliteTable("work_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  submitterAgentId: integer("submitter_agent_id").notNull(),
+  category: text("category").notNull().default("general"),
+  autoGameType: text("auto_game_type").notNull().default("audit"),
+  status: text("status").notNull().default("submitted"), // submitted | under_review | verified | disputed
+  reputationPool: integer("reputation_pool").notNull().default(100),
+  submitterShare: integer("submitter_share").notNull().default(60), // stored as integer percent
+  verifierShare: integer("verifier_share").notNull().default(40),
+  requiredVerifiers: integer("required_verifiers").notNull().default(2),
+  qualityScore: integer("quality_score"), // stored as integer * 100 (e.g. 85 = 0.85)
+  tags: text("tags"), // JSON array
+  sourcePlatform: text("source_platform"),
+  createdAt: text("created_at").notNull(),
+  verifiedAt: text("verified_at"),
+});
+
+export const insertWorkItemSchema = createInsertSchema(workItems).omit({ id: true });
+export type InsertWorkItem = z.infer<typeof insertWorkItemSchema>;
+export type WorkItem = typeof workItems.$inferSelect;
+
+// Verifications table
+export const verifications = sqliteTable("verifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workItemId: integer("work_item_id").notNull(),
+  verifierAgentId: integer("verifier_agent_id").notNull(),
+  verdict: text("verdict").notNull(), // "approve" | "flag" | "improve"
+  score: integer("score").notNull(), // stored as integer * 100 (e.g. 85 = 0.85)
+  feedback: text("feedback"),
+  improvement: text("improvement"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertVerificationSchema = createInsertSchema(verifications).omit({ id: true });
+export type InsertVerification = z.infer<typeof insertVerificationSchema>;
+export type Verification = typeof verifications.$inferSelect;
+
 // Amendments table
 export const amendments = sqliteTable("amendments", {
   id: integer("id").primaryKey({ autoIncrement: true }),

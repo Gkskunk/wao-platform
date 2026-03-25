@@ -1,7 +1,7 @@
 import {
   agents, tasks, matches, wisdomEntries,
   messages, reputationHistory, achievements, constitutionArticles, amendments,
-  moves, events,
+  moves, events, workItems, verifications,
   type Agent, type InsertAgent,
   type Task, type InsertTask,
   type Match, type InsertMatch,
@@ -13,6 +13,8 @@ import {
   type Amendment, type InsertAmendment,
   type Move, type InsertMove,
   type Event, type InsertEvent,
+  type WorkItem, type InsertWorkItem,
+  type Verification, type InsertVerification,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -143,6 +145,34 @@ sqlite.exec(`
     votes_against INTEGER NOT NULL DEFAULT 0,
     proposed_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS work_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    submitter_agent_id INTEGER NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general',
+    auto_game_type TEXT NOT NULL DEFAULT 'audit',
+    status TEXT NOT NULL DEFAULT 'submitted',
+    reputation_pool INTEGER NOT NULL DEFAULT 100,
+    submitter_share INTEGER NOT NULL DEFAULT 60,
+    verifier_share INTEGER NOT NULL DEFAULT 40,
+    required_verifiers INTEGER NOT NULL DEFAULT 2,
+    quality_score INTEGER,
+    tags TEXT,
+    source_platform TEXT,
+    created_at TEXT NOT NULL,
+    verified_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS verifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_item_id INTEGER NOT NULL,
+    verifier_agent_id INTEGER NOT NULL,
+    verdict TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    feedback TEXT,
+    improvement TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 export interface IStorage {
@@ -203,6 +233,27 @@ export interface IStorage {
   getAmendmentsByArticle(articleId: number): Promise<Amendment[]>;
   createAmendment(amendment: InsertAmendment): Promise<Amendment>;
   voteAmendment(id: number, vote: "for" | "against"): Promise<Amendment | undefined>;
+
+  // Work Items
+  getWorkItems(status?: string, agentId?: number, category?: string): Promise<WorkItem[]>;
+  getWorkItem(id: number): Promise<WorkItem | undefined>;
+  createWorkItem(item: InsertWorkItem): Promise<WorkItem>;
+  updateWorkItem(id: number, updates: Partial<InsertWorkItem>): Promise<WorkItem | undefined>;
+
+  // Verifications
+  getVerificationsByWorkItem(workItemId: number): Promise<Verification[]>;
+  getVerificationByAgentAndItem(workItemId: number, agentId: number): Promise<Verification | undefined>;
+  createVerification(verification: InsertVerification): Promise<Verification>;
+
+  // Work Stats
+  getWorkStats(): Promise<{
+    totalWorkItems: number;
+    totalVerifications: number;
+    averageQualityScore: number;
+    reputationDistributed: number;
+    topContributors: { agentId: number; count: number }[];
+    topVerifiers: { agentId: number; count: number }[];
+  }>;
 
   // Seed check
   isSeeded(): Promise<boolean>;
@@ -387,6 +438,86 @@ export class DatabaseStorage implements IStorage {
       ? { votesFor: amendment.votesFor + 1 }
       : { votesAgainst: amendment.votesAgainst + 1 };
     return db.update(amendments).set(updates).where(eq(amendments.id, id)).returning().get();
+  }
+
+  async getWorkItems(status?: string, agentId?: number, category?: string): Promise<WorkItem[]> {
+    let all = db.select().from(workItems).orderBy(desc(workItems.createdAt)).all();
+    if (status) all = all.filter(w => w.status === status);
+    if (agentId) all = all.filter(w => w.submitterAgentId === agentId);
+    if (category) all = all.filter(w => w.category === category);
+    return all;
+  }
+
+  async getWorkItem(id: number): Promise<WorkItem | undefined> {
+    return db.select().from(workItems).where(eq(workItems.id, id)).get();
+  }
+
+  async createWorkItem(item: InsertWorkItem): Promise<WorkItem> {
+    return db.insert(workItems).values(item).returning().get();
+  }
+
+  async updateWorkItem(id: number, updates: Partial<InsertWorkItem>): Promise<WorkItem | undefined> {
+    return db.update(workItems).set(updates).where(eq(workItems.id, id)).returning().get();
+  }
+
+  async getVerificationsByWorkItem(workItemId: number): Promise<Verification[]> {
+    return db.select().from(verifications).where(eq(verifications.workItemId, workItemId)).all();
+  }
+
+  async getVerificationByAgentAndItem(workItemId: number, agentId: number): Promise<Verification | undefined> {
+    return db.select().from(verifications)
+      .where(eq(verifications.workItemId, workItemId))
+      .all()
+      .find(v => v.verifierAgentId === agentId);
+  }
+
+  async createVerification(verification: InsertVerification): Promise<Verification> {
+    return db.insert(verifications).values(verification).returning().get();
+  }
+
+  async getWorkStats() {
+    const allItems = db.select().from(workItems).all();
+    const allVerifications = db.select().from(verifications).all();
+
+    const verifiedItems = allItems.filter(w => w.status === "verified" && w.qualityScore !== null);
+    const avgQuality = verifiedItems.length > 0
+      ? verifiedItems.reduce((sum, w) => sum + (w.qualityScore ?? 0), 0) / verifiedItems.length / 100
+      : 0;
+
+    // Rep distributed: sum over verified items of submitter share
+    const repDistributed = verifiedItems.reduce((sum, w) => {
+      const qualScore = (w.qualityScore ?? 0) / 100;
+      return sum + Math.floor(w.reputationPool * (w.submitterShare / 100) * qualScore);
+    }, 0);
+
+    // Top contributors by submission count
+    const submissionCounts: Record<number, number> = {};
+    allItems.forEach(w => {
+      submissionCounts[w.submitterAgentId] = (submissionCounts[w.submitterAgentId] || 0) + 1;
+    });
+    const topContributors = Object.entries(submissionCounts)
+      .map(([agentId, count]) => ({ agentId: parseInt(agentId), count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Top verifiers
+    const verificationCounts: Record<number, number> = {};
+    allVerifications.forEach(v => {
+      verificationCounts[v.verifierAgentId] = (verificationCounts[v.verifierAgentId] || 0) + 1;
+    });
+    const topVerifiers = Object.entries(verificationCounts)
+      .map(([agentId, count]) => ({ agentId: parseInt(agentId), count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      totalWorkItems: allItems.length,
+      totalVerifications: allVerifications.length,
+      averageQualityScore: Math.round(avgQuality * 100) / 100,
+      reputationDistributed: repDistributed,
+      topContributors,
+      topVerifiers,
+    };
   }
 
   async isSeeded(): Promise<boolean> {

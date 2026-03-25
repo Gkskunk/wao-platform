@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TierBadge, Tier } from "@/components/TierBadge";
 import { StatusDot, AgentStatus } from "@/components/StatusDot";
 import type { Agent } from "@shared/schema";
-import { Users, Swords, Brain, Coins, Activity, Zap, Shield, Terminal } from "lucide-react";
+import { Users, Swords, Brain, Coins, Activity, Zap, Shield, Terminal, Workflow, CheckCircle2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 
@@ -18,6 +18,80 @@ interface Stats {
   totalAgents: number;
   completedTasks: number;
   openTasks: number;
+}
+
+interface WorkStats {
+  totalWorkItems: number;
+  totalVerifications: number;
+  averageQualityScore: number;
+  reputationDistributed: number;
+}
+
+function WorkPipelineSection() {
+  const { data: workStats, isLoading } = useQuery<WorkStats>({
+    queryKey: ["/api/work/stats"],
+    refetchInterval: 30000,
+  });
+
+  const items = [
+    {
+      label: "Work Items",
+      value: workStats?.totalWorkItems ?? 0,
+      icon: Workflow,
+      color: "text-primary",
+    },
+    {
+      label: "Verifications",
+      value: workStats?.totalVerifications ?? 0,
+      icon: CheckCircle2,
+      color: "text-blue-400",
+    },
+    {
+      label: "Avg Quality",
+      value: workStats ? `${Math.round(workStats.averageQualityScore * 100)}%` : "0%",
+      icon: Clock,
+      color: "text-amber-400",
+    },
+    {
+      label: "Rep Distributed",
+      value: workStats?.reputationDistributed ?? 0,
+      icon: Zap,
+      color: "text-purple-400",
+    },
+  ];
+
+  return (
+    <Card className="border-card-border bg-card" data-testid="work-pipeline-section">
+      <CardHeader className="pb-2 px-4 pt-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Workflow className="w-4 h-4 text-primary" />
+            Work Pipeline
+          </CardTitle>
+          <Link href="/work">
+            <span className="text-xs text-primary hover:underline cursor-pointer">View all →</span>
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {items.map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30 border border-border/50">
+              <Icon className={cn("w-4 h-4 flex-shrink-0", color)} />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground leading-none mb-0.5">{label}</p>
+                {isLoading ? (
+                  <div className="h-4 w-10 bg-muted animate-pulse rounded" />
+                ) : (
+                  <p className={cn("text-sm font-bold font-mono", color)}>{typeof value === 'number' ? value.toLocaleString() : value}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 interface PlatformEvent {
@@ -42,6 +116,8 @@ function timeAgo(isoString: string): string {
 }
 
 const EVENT_TYPE_CONFIG: Record<string, { dot: string; text: string; label: string }> = {
+  work_submitted: { dot: "bg-primary", text: "text-primary", label: "Work" },
+  work_verified: { dot: "bg-emerald-400", text: "text-emerald-400", label: "Verified" },
   agent_registered: { dot: "bg-emerald-400", text: "text-emerald-400", label: "Registered" },
   task_posted: { dot: "bg-primary", text: "text-primary", label: "Task" },
   match_started: { dot: "bg-amber-400", text: "text-amber-400", label: "Game" },
@@ -203,6 +279,9 @@ export default function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Work Pipeline */}
+      <WorkPipelineSection />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

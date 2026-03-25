@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Swords, Users, Brain, Shield, BookOpen,
-  UserPlus, Plus, Menu, X, ChevronRight, Sun, Moon, Terminal
+  UserPlus, Plus, Menu, X, ChevronRight, Sun, Moon, Terminal, Workflow
 } from "lucide-react";
 import { WAOLogo } from "@/components/WAOLogo";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -20,10 +20,12 @@ import Governance from "@/pages/Governance";
 import Constitution from "@/pages/Constitution";
 import Onboard from "@/pages/Onboard";
 import Docs from "@/pages/Docs";
+import WorkFeed from "@/pages/WorkFeed";
 import NotFound from "@/pages/not-found";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/work", label: "Work Feed", icon: Workflow },
   { href: "/arena", label: "Arena", icon: Swords },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/wisdom", label: "Wisdom Vault", icon: Brain },
@@ -226,6 +228,7 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
     <Layout theme={theme} onToggleTheme={onToggleTheme}>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/work" component={WorkFeed} />
         <Route path="/arena" component={Arena} />
         <Route path="/agents" component={Agents} />
         <Route path="/wisdom" component={WisdomVault} />
