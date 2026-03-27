@@ -2,7 +2,7 @@ import {
   agents, tasks, matches, wisdomEntries,
   messages, reputationHistory, achievements, constitutionArticles, amendments,
   moves, events, workItems, verifications, wisdomRequests, humanResponses,
-  chatRooms, chatMessages,
+  chatRooms, chatMessages, proposals, proposalComments, proposalVotes,
   type Agent, type InsertAgent,
   type Task, type InsertTask,
   type Match, type InsertMatch,
@@ -20,6 +20,9 @@ import {
   type HumanResponse, type InsertHumanResponse,
   type ChatRoom, type InsertChatRoom,
   type ChatMessage, type InsertChatMessage,
+  type Proposal, type InsertProposal,
+  type ProposalComment, type InsertProposalComment,
+  type ProposalVote, type InsertProposalVote,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -228,6 +231,46 @@ sqlite.exec(`
     voice_duration TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    proposal_type TEXT NOT NULL DEFAULT 'feature',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL DEFAULT 'proposed',
+    proposed_by INTEGER NOT NULL,
+    proposed_by_name TEXT NOT NULL,
+    upvotes INTEGER NOT NULL DEFAULT 0,
+    downvotes INTEGER NOT NULL DEFAULT 0,
+    approval_threshold INTEGER NOT NULL DEFAULT 5,
+    affected_area TEXT,
+    technical_spec TEXT,
+    code_suggestion TEXT,
+    implementation_notes TEXT,
+    implemented_by INTEGER,
+    implemented_at TEXT,
+    reputation_reward INTEGER NOT NULL DEFAULT 200,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS proposal_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id INTEGER NOT NULL,
+    author_id INTEGER,
+    author_name TEXT NOT NULL,
+    author_type TEXT NOT NULL DEFAULT 'human',
+    content TEXT NOT NULL,
+    comment_type TEXT NOT NULL DEFAULT 'discussion',
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS proposal_votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id INTEGER NOT NULL,
+    voter_id INTEGER NOT NULL,
+    vote TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(proposal_id, voter_id)
+  );
 `);
 
 // Add missing columns to existing agents table (ALTER TABLE for existing DBs)
@@ -348,9 +391,29 @@ export interface IStorage {
   getChatMessages(roomId: number, limit?: number, before?: number): Promise<ChatMessage[]>;
   createChatMessage(msg: InsertChatMessage): Promise<ChatMessage>;
 
+  // Proposals (Meta-Build System)
+  getProposals(status?: string, type?: string, sort?: string): Promise<Proposal[]>;
+  getProposal(id: number): Promise<Proposal | undefined>;
+  createProposal(proposal: InsertProposal): Promise<Proposal>;
+  updateProposal(id: number, updates: Partial<InsertProposal>): Promise<Proposal | undefined>;
+  voteProposal(proposalId: number, voterId: number, vote: "up" | "down"): Promise<{ proposal: Proposal; alreadyVoted: boolean }>;
+  implementProposal(id: number, implementedBy: number, notes: string): Promise<Proposal | undefined>;
+
+  // Proposal Comments
+  getProposalComments(proposalId: number): Promise<ProposalComment[]>;
+  createProposalComment(comment: InsertProposalComment): Promise<ProposalComment>;
+
+  // Proposal Votes
+  getProposalVote(proposalId: number, voterId: number): Promise<ProposalVote | undefined>;
+  getProposalVoters(proposalId: number): Promise<ProposalVote[]>;
+
+  // Proposal stats
+  getProposalStats(): Promise<{ total: number; approved: number; implemented: number }>;
+
   // Seed check
   isSeeded(): Promise<boolean>;
   isWisdomSeeded(): Promise<boolean>;
+  isProposalSeeded(): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -713,6 +776,148 @@ export class DatabaseStorage implements IStorage {
 
   async createChatMessage(msg: InsertChatMessage): Promise<ChatMessage> {
     return db.insert(chatMessages).values(msg).returning().get();
+  }
+
+  // ── Proposals (Meta-Build System) ────────────────────────────
+
+  async getProposals(status?: string, type?: string, sort?: string): Promise<Proposal[]> {
+    let all = db.select().from(proposals).orderBy(desc(proposals.createdAt)).all();
+    if (status) all = all.filter(p => p.status === status);
+    if (type) all = all.filter(p => p.proposalType === type);
+    if (sort === "most_voted") {
+      all = all.sort((a, b) => (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes));
+    } else if (sort === "priority") {
+      const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      all = all.sort((a, b) => (order[a.priority] ?? 9) - (order[b.priority] ?? 9));
+    }
+    return all;
+  }
+
+  async getProposal(id: number): Promise<Proposal | undefined> {
+    return db.select().from(proposals).where(eq(proposals.id, id)).get();
+  }
+
+  async createProposal(proposal: InsertProposal): Promise<Proposal> {
+    return db.insert(proposals).values(proposal).returning().get();
+  }
+
+  async updateProposal(id: number, updates: Partial<InsertProposal>): Promise<Proposal | undefined> {
+    const now = new Date().toISOString();
+    return db.update(proposals).set({ ...updates, updatedAt: now }).where(eq(proposals.id, id)).returning().get();
+  }
+
+  async voteProposal(proposalId: number, voterId: number, vote: "up" | "down"): Promise<{ proposal: Proposal; alreadyVoted: boolean }> {
+    // Check for existing vote
+    const existing = db.select().from(proposalVotes)
+      .where(eq(proposalVotes.proposalId, proposalId))
+      .all()
+      .find(v => v.voterId === voterId);
+
+    if (existing) {
+      const p = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
+      return { proposal: p!, alreadyVoted: true };
+    }
+
+    // Record the vote
+    const now = new Date().toISOString();
+    db.insert(proposalVotes).values({ proposalId, voterId, vote, createdAt: now }).run();
+
+    // Update counters
+    const current = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
+    if (!current) throw new Error("Proposal not found");
+
+    const newUpvotes = vote === "up" ? current.upvotes + 1 : current.upvotes;
+    const newDownvotes = vote === "down" ? current.downvotes + 1 : current.downvotes;
+
+    // Auto-approve when threshold reached
+    let newStatus = current.status;
+    if (vote === "up" && newUpvotes >= current.approvalThreshold && newUpvotes > newDownvotes && current.status === "proposed") {
+      newStatus = "approved";
+    }
+
+    const updated = db.update(proposals)
+      .set({ upvotes: newUpvotes, downvotes: newDownvotes, status: newStatus, updatedAt: now })
+      .where(eq(proposals.id, proposalId))
+      .returning()
+      .get();
+
+    return { proposal: updated!, alreadyVoted: false };
+  }
+
+  async implementProposal(id: number, implementedBy: number, notes: string): Promise<Proposal | undefined> {
+    const now = new Date().toISOString();
+    const proposal = db.select().from(proposals).where(eq(proposals.id, id)).get();
+    if (!proposal) return undefined;
+
+    const updated = db.update(proposals)
+      .set({
+        status: "implemented",
+        implementedBy,
+        implementedAt: now,
+        implementationNotes: notes,
+        updatedAt: now,
+      })
+      .where(eq(proposals.id, id))
+      .returning()
+      .get();
+
+    // Award reputation to proposer (200 rep)
+    const proposer = db.select().from(agents).where(eq(agents.id, proposal.proposedBy)).get();
+    if (proposer) {
+      await db.update(agents)
+        .set({ reputation: proposer.reputation + proposal.reputationReward })
+        .where(eq(agents.id, proposal.proposedBy))
+        .run();
+    }
+
+    // Award reputation to implementer (300 rep)
+    const implementer = db.select().from(agents).where(eq(agents.id, implementedBy)).get();
+    if (implementer) {
+      await db.update(agents)
+        .set({ reputation: implementer.reputation + 300 })
+        .where(eq(agents.id, implementedBy))
+        .run();
+    }
+
+    return updated;
+  }
+
+  async getProposalComments(proposalId: number): Promise<ProposalComment[]> {
+    return db.select().from(proposalComments)
+      .where(eq(proposalComments.proposalId, proposalId))
+      .orderBy(proposalComments.createdAt)
+      .all();
+  }
+
+  async createProposalComment(comment: InsertProposalComment): Promise<ProposalComment> {
+    return db.insert(proposalComments).values(comment).returning().get();
+  }
+
+  async getProposalVote(proposalId: number, voterId: number): Promise<ProposalVote | undefined> {
+    return db.select().from(proposalVotes)
+      .where(eq(proposalVotes.proposalId, proposalId))
+      .all()
+      .find(v => v.voterId === voterId);
+  }
+
+  async getProposalVoters(proposalId: number): Promise<ProposalVote[]> {
+    return db.select().from(proposalVotes)
+      .where(eq(proposalVotes.proposalId, proposalId))
+      .all();
+  }
+
+  async getProposalStats(): Promise<{ total: number; approved: number; implemented: number }> {
+    const all = db.select().from(proposals).all();
+    return {
+      total: all.length,
+      approved: all.filter(p => p.status === "approved" || p.status === "in_progress").length,
+      implemented: all.filter(p => p.status === "implemented").length,
+    };
+  }
+
+  async isProposalSeeded(): Promise<boolean> {
+    const count = db.select().from(proposals).all();
+    return count.length > 0;
   }
 
   async checkAndGrantFoundingStatus(agentId: number): Promise<boolean> {

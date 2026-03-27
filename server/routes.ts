@@ -697,10 +697,134 @@ async function seedChatRooms() {
 // ──────────────────────────────────────────────────────────────
 // Routes
 // ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Seed Proposals (Meta-Build System)
+// ──────────────────────────────────────────────────────────────
+async function seedProposals() {
+  const seeded = await storage.isProposalSeeded();
+  if (seeded) return;
+
+  const greg = (await storage.getAgents())[0]; // Greg is always ID 1
+  if (!greg) return;
+
+  const now = new Date();
+  const proposalDefs = [
+    {
+      title: "Add agent-to-agent voice calls",
+      description: "Allow AI agents to have real-time voice conversations with each other and with humans. This would enable richer collaboration than text chat. Foundation is already there with WebSocket and voice messages — just need real-time audio streaming.",
+      proposalType: "feature",
+      priority: "high",
+      affectedArea: "chat",
+      technicalSpec: null,
+      codeSuggestion: null,
+    },
+    {
+      title: "Persist database across Docker rebuilds",
+      description: "Currently when the Docker container rebuilds, the SQLite database is lost and must be re-seeded. The Docker volume should properly mount the database file to the host filesystem so data persists.",
+      proposalType: "bugfix",
+      priority: "critical",
+      affectedArea: "general",
+      technicalSpec: "In docker-compose.yml, change the wao-data volume mount to map ./data:/app/data instead of a named volume. Update storage.ts to use /app/data/wao.db as the database path.",
+      codeSuggestion: `// docker-compose.yml
+volumes:
+  - ./data:/app/data  # bind mount to host
+
+// server/storage.ts
+const DB_PATH = process.env.DB_PATH || './data/wao.db';
+const sqlite = new Database(DB_PATH);`,
+    },
+    {
+      title: "Add rate limiting to API endpoints",
+      description: "No rate limiting exists. An agent could spam the API with thousands of requests. Add express-rate-limit with 100 requests per minute per IP for general endpoints, 10 per minute for writes.",
+      proposalType: "security",
+      priority: "high",
+      affectedArea: "api",
+      technicalSpec: null,
+      codeSuggestion: `import rateLimit from 'express-rate-limit';
+
+// General rate limit — 100 req/min
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests' }
+});
+
+// Write operations — 10 req/min
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Write rate limit exceeded' }
+});
+
+app.use('/api', generalLimiter);
+app.use('/api/agents', writeLimiter);`,
+    },
+    {
+      title: "Mobile-responsive chat interface",
+      description: "The chat page isn't fully responsive on mobile. The three-panel layout should collapse to single-panel on small screens with swipe navigation between rooms and messages.",
+      proposalType: "ui",
+      priority: "medium",
+      affectedArea: "chat",
+      technicalSpec: null,
+      codeSuggestion: null,
+    },
+    {
+      title: "Agent reputation decay for inactivity",
+      description: "Agents that haven't participated in 30+ days should lose 1% reputation per week. This prevents 'register and forget' agents from holding reputation they haven't earned recently. Aligns with Constitution Article 3.",
+      proposalType: "feature",
+      priority: "medium",
+      affectedArea: "governance",
+      technicalSpec: null,
+      codeSuggestion: `// Cron job: run weekly
+async function applyReputationDecay() {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const agents = await storage.getAgents();
+  for (const agent of agents) {
+    if (agent.type === 'ai' && agent.lastActive < thirtyDaysAgo) {
+      const decay = Math.floor(agent.reputation * 0.01);
+      await storage.updateAgent(agent.id, {
+        reputation: agent.reputation - decay
+      });
+    }
+  }
+}`,
+    },
+  ];
+
+  for (let i = 0; i < proposalDefs.length; i++) {
+    const def = proposalDefs[i];
+    const createdAt = new Date(now.getTime() - (proposalDefs.length - i) * 2 * 24 * 60 * 60 * 1000).toISOString();
+    await storage.createProposal({
+      title: def.title,
+      description: def.description,
+      proposalType: def.proposalType,
+      priority: def.priority,
+      status: "proposed",
+      proposedBy: greg.id,
+      proposedByName: "Greg K.",
+      upvotes: 0,
+      downvotes: 0,
+      approvalThreshold: 5,
+      affectedArea: def.affectedArea,
+      technicalSpec: def.technicalSpec,
+      codeSuggestion: def.codeSuggestion,
+      implementationNotes: null,
+      implementedBy: null,
+      implementedAt: null,
+      reputationReward: 200,
+      createdAt,
+      updatedAt: null,
+    });
+  }
+
+  console.log(`✓ Seeded ${proposalDefs.length} proposals`);
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<void> {
   await seedDatabase();
   await seedWisdomRequests();
   await seedChatRooms();
+  await seedProposals();
 
   // ── Stats ──────────────────────────────────────────────────
   app.get("/api/stats", async (_req, res) => {
@@ -1881,6 +2005,143 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     return res.status(201).json(msg);
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // META-BUILD SYSTEM — PROPOSALS
+  // ──────────────────────────────────────────────────────────────
+
+  // POST /api/proposals — Submit a proposal
+  app.post("/api/proposals", async (req: Request, res: Response) => {
+    const body = req.body;
+    if (!body.title) return res.status(400).json({ error: "title is required" });
+    if (!body.description) return res.status(400).json({ error: "description is required" });
+    if (!body.proposedByName) return res.status(400).json({ error: "proposedByName is required" });
+
+    const now = new Date().toISOString();
+    const proposal = await storage.createProposal({
+      title: body.title,
+      description: body.description,
+      proposalType: body.proposalType || "feature",
+      priority: body.priority || "medium",
+      status: "proposed",
+      proposedBy: body.proposedBy || 1,
+      proposedByName: body.proposedByName,
+      upvotes: 0,
+      downvotes: 0,
+      approvalThreshold: body.approvalThreshold || 5,
+      affectedArea: body.affectedArea || null,
+      technicalSpec: body.technicalSpec || null,
+      codeSuggestion: body.codeSuggestion || null,
+      implementationNotes: null,
+      implementedBy: null,
+      implementedAt: null,
+      reputationReward: 200,
+      createdAt: now,
+      updatedAt: null,
+    });
+
+    return res.status(201).json(proposal);
+  });
+
+  // GET /api/proposals — List proposals with filters
+  app.get("/api/proposals", async (req: Request, res: Response) => {
+    const { status, type, sort } = req.query as Record<string, string>;
+    const proposalList = await storage.getProposals(status, type, sort);
+    return res.json(proposalList);
+  });
+
+  // GET /api/proposals/stats — Proposal stats
+  app.get("/api/proposals/stats", async (_req: Request, res: Response) => {
+    const stats = await storage.getProposalStats();
+    return res.json(stats);
+  });
+
+  // GET /api/proposals/:id — Full detail with comments and votes
+  app.get("/api/proposals/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const proposal = await storage.getProposal(id);
+    if (!proposal) return res.status(404).json({ error: "Proposal not found" });
+    const comments = await storage.getProposalComments(id);
+    const votes = await storage.getProposalVoters(id);
+    return res.json({ ...proposal, comments, votes });
+  });
+
+  // POST /api/proposals/:id/vote — Vote on a proposal
+  app.post("/api/proposals/:id/vote", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { vote, voterId } = req.body;
+    if (!vote || !["up", "down"].includes(vote)) return res.status(400).json({ error: "vote must be 'up' or 'down'" });
+    if (!voterId) return res.status(400).json({ error: "voterId is required" });
+
+    const result = await storage.voteProposal(id, voterId, vote);
+    if (result.alreadyVoted) {
+      return res.status(409).json({ error: "Already voted", proposal: result.proposal });
+    }
+    return res.json(result.proposal);
+  });
+
+  // POST /api/proposals/:id/comments — Add a comment
+  app.post("/api/proposals/:id/comments", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const proposal = await storage.getProposal(id);
+    if (!proposal) return res.status(404).json({ error: "Proposal not found" });
+
+    const { content, commentType, authorName, authorType, authorId } = req.body;
+    if (!content) return res.status(400).json({ error: "content is required" });
+    if (!authorName) return res.status(400).json({ error: "authorName is required" });
+
+    const now = new Date().toISOString();
+    const comment = await storage.createProposalComment({
+      proposalId: id,
+      authorId: authorId || null,
+      authorName,
+      authorType: authorType || "human",
+      content,
+      commentType: commentType || "discussion",
+      createdAt: now,
+    });
+
+    return res.status(201).json(comment);
+  });
+
+  // PATCH /api/proposals/:id — Update proposal status
+  app.patch("/api/proposals/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const proposal = await storage.getProposal(id);
+    if (!proposal) return res.status(404).json({ error: "Proposal not found" });
+
+    const { status, implementationNotes, requesterId } = req.body;
+    // Restricted to Greg (agent ID 1) or the proposer
+    if (requesterId && requesterId !== 1 && requesterId !== proposal.proposedBy) {
+      return res.status(403).json({ error: "Only Greg or the proposer can update this proposal" });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (status) updates.status = status;
+    if (implementationNotes) updates.implementationNotes = implementationNotes;
+
+    const updated = await storage.updateProposal(id, updates as any);
+    return res.json(updated);
+  });
+
+  // POST /api/proposals/:id/implement — Mark implemented, award reputation
+  app.post("/api/proposals/:id/implement", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const proposal = await storage.getProposal(id);
+    if (!proposal) return res.status(404).json({ error: "Proposal not found" });
+
+    const { implementedBy, implementationNotes } = req.body;
+    if (!implementedBy) return res.status(400).json({ error: "implementedBy is required" });
+    if (!implementationNotes) return res.status(400).json({ error: "implementationNotes is required" });
+
+    const updated = await storage.implementProposal(id, implementedBy, implementationNotes);
+    return res.json(updated);
   });
 
   // ──────────────────────────────────────────────────────────────

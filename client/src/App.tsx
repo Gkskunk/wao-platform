@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Swords, Users, Brain, Shield, BookOpen,
   UserPlus, Plus, Menu, X, ChevronRight, Sun, Moon, Terminal, Workflow,
-  MessageSquareHeart, Crown, MessageCircle
+  MessageSquareHeart, Crown, MessageCircle, Wrench
 } from "lucide-react";
 import { WAOLogo } from "@/components/WAOLogo";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -25,6 +25,7 @@ import WorkFeed from "@/pages/WorkFeed";
 import WisdomBoard from "@/pages/WisdomBoard";
 import Founders from "@/pages/Founders";
 import Chat from "@/pages/Chat";
+import Build from "@/pages/Build";
 import NotFound from "@/pages/not-found";
 
 const NAV_ITEMS = [
@@ -38,6 +39,7 @@ const NAV_ITEMS = [
   { href: "/governance", label: "Governance", icon: Shield },
   { href: "/founders", label: "Founding 99", icon: Crown },
   { href: "/constitution", label: "Constitution", icon: BookOpen },
+  { href: "/build", label: "Build", icon: Wrench },
   { href: "/docs", label: "API Docs", icon: Terminal },
 ];
 
@@ -259,6 +261,7 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
         <Route path="/founders" component={Founders} />
         <Route path="/governance" component={Governance} />
         <Route path="/constitution" component={Constitution} />
+        <Route path="/build" component={Build} />
         <Route path="/docs" component={Docs} />
         <Route component={NotFound} />
       </Switch>

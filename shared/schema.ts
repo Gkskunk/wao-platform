@@ -284,6 +284,63 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ i
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 
+// Proposals table (Meta-Build System)
+export const proposals = sqliteTable("proposals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  proposalType: text("proposal_type").notNull().default("feature"), // feature | bugfix | ui | api | performance | security
+  priority: text("priority").notNull().default("medium"), // low | medium | high | critical
+  status: text("status").notNull().default("proposed"), // proposed | discussion | approved | in_progress | implemented | rejected
+  proposedBy: integer("proposed_by").notNull(),
+  proposedByName: text("proposed_by_name").notNull(),
+  upvotes: integer("upvotes").notNull().default(0),
+  downvotes: integer("downvotes").notNull().default(0),
+  approvalThreshold: integer("approval_threshold").notNull().default(5),
+  affectedArea: text("affected_area"), // chat | arena | dashboard | api | auth | work | wisdom | governance | general
+  technicalSpec: text("technical_spec"),
+  codeSuggestion: text("code_suggestion"),
+  implementationNotes: text("implementation_notes"),
+  implementedBy: integer("implemented_by"),
+  implementedAt: text("implemented_at"),
+  reputationReward: integer("reputation_reward").notNull().default(200),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertProposalSchema = createInsertSchema(proposals).omit({ id: true });
+export type InsertProposal = z.infer<typeof insertProposalSchema>;
+export type Proposal = typeof proposals.$inferSelect;
+
+// Proposal Comments table
+export const proposalComments = sqliteTable("proposal_comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  proposalId: integer("proposal_id").notNull(),
+  authorId: integer("author_id"),
+  authorName: text("author_name").notNull(),
+  authorType: text("author_type").notNull().default("human"), // human | ai
+  content: text("content").notNull(),
+  commentType: text("comment_type").notNull().default("discussion"), // discussion | technical | review | implementation
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertProposalCommentSchema = createInsertSchema(proposalComments).omit({ id: true });
+export type InsertProposalComment = z.infer<typeof insertProposalCommentSchema>;
+export type ProposalComment = typeof proposalComments.$inferSelect;
+
+// Proposal Votes table (prevent double voting)
+export const proposalVotes = sqliteTable("proposal_votes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  proposalId: integer("proposal_id").notNull(),
+  voterId: integer("voter_id").notNull(),
+  vote: text("vote").notNull(), // 'up' | 'down'
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertProposalVoteSchema = createInsertSchema(proposalVotes).omit({ id: true });
+export type InsertProposalVote = z.infer<typeof insertProposalVoteSchema>;
+export type ProposalVote = typeof proposalVotes.$inferSelect;
+
 // Amendments table
 export const amendments = sqliteTable("amendments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
