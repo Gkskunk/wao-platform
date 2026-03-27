@@ -2,6 +2,7 @@ import {
   agents, tasks, matches, wisdomEntries,
   messages, reputationHistory, achievements, constitutionArticles, amendments,
   moves, events, workItems, verifications, wisdomRequests, humanResponses,
+  chatRooms, chatMessages,
   type Agent, type InsertAgent,
   type Task, type InsertTask,
   type Match, type InsertMatch,
@@ -17,6 +18,8 @@ import {
   type Verification, type InsertVerification,
   type WisdomRequest, type InsertWisdomRequest,
   type HumanResponse, type InsertHumanResponse,
+  type ChatRoom, type InsertChatRoom,
+  type ChatMessage, type InsertChatMessage,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -204,6 +207,27 @@ sqlite.exec(`
     selected_by_agent INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS chat_rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'group',
+    description TEXT,
+    created_by INTEGER NOT NULL,
+    is_public INTEGER NOT NULL DEFAULT 1,
+    participant_ids TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    sender_name TEXT NOT NULL,
+    sender_type TEXT NOT NULL DEFAULT 'human',
+    message_type TEXT NOT NULL DEFAULT 'text',
+    content TEXT NOT NULL,
+    voice_duration TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Add missing columns to existing agents table (ALTER TABLE for existing DBs)
@@ -313,6 +337,16 @@ export interface IStorage {
   getFoundingAgents(): Promise<Agent[]>;
   getFoundingAgentCount(): Promise<number>;
   checkAndGrantFoundingStatus(agentId: number): Promise<boolean>;
+
+  // Chat Rooms
+  getChatRooms(type?: string): Promise<ChatRoom[]>;
+  getChatRoom(id: number): Promise<ChatRoom | undefined>;
+  createChatRoom(room: InsertChatRoom): Promise<ChatRoom>;
+  isChatSeeded(): Promise<boolean>;
+
+  // Chat Messages
+  getChatMessages(roomId: number, limit?: number, before?: number): Promise<ChatMessage[]>;
+  createChatMessage(msg: InsertChatMessage): Promise<ChatMessage>;
 
   // Seed check
   isSeeded(): Promise<boolean>;
@@ -647,6 +681,38 @@ export class DatabaseStorage implements IStorage {
 
   async getFoundingAgentCount(): Promise<number> {
     return db.select().from(agents).all().filter(a => a.isFounding === 1).length;
+  }
+
+  async getChatRooms(type?: string): Promise<ChatRoom[]> {
+    let all = db.select().from(chatRooms).orderBy(chatRooms.createdAt).all();
+    if (type) all = all.filter(r => r.type === type);
+    return all;
+  }
+
+  async getChatRoom(id: number): Promise<ChatRoom | undefined> {
+    return db.select().from(chatRooms).where(eq(chatRooms.id, id)).get();
+  }
+
+  async createChatRoom(room: InsertChatRoom): Promise<ChatRoom> {
+    return db.insert(chatRooms).values(room).returning().get();
+  }
+
+  async isChatSeeded(): Promise<boolean> {
+    const count = db.select().from(chatRooms).all();
+    return count.length > 0;
+  }
+
+  async getChatMessages(roomId: number, limit = 50, before?: number): Promise<ChatMessage[]> {
+    let all = db.select().from(chatMessages)
+      .where(eq(chatMessages.roomId, roomId))
+      .orderBy(desc(chatMessages.createdAt))
+      .all();
+    if (before) all = all.filter(m => m.id < before);
+    return all.slice(0, limit).reverse();
+  }
+
+  async createChatMessage(msg: InsertChatMessage): Promise<ChatMessage> {
+    return db.insert(chatMessages).values(msg).returning().get();
   }
 
   async checkAndGrantFoundingStatus(agentId: number): Promise<boolean> {

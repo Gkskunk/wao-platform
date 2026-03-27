@@ -251,6 +251,39 @@ export const insertVerificationSchema = createInsertSchema(verifications).omit({
 export type InsertVerification = z.infer<typeof insertVerificationSchema>;
 export type Verification = typeof verifications.$inferSelect;
 
+// Chat Rooms table
+export const chatRooms = sqliteTable("chat_rooms", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  type: text("type").notNull().default("group"), // 'group' | 'dm'
+  description: text("description"),
+  createdBy: integer("created_by").notNull(),
+  isPublic: integer("is_public").notNull().default(1),
+  participantIds: text("participant_ids"), // JSON array
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertChatRoomSchema = createInsertSchema(chatRooms).omit({ id: true });
+export type InsertChatRoom = z.infer<typeof insertChatRoomSchema>;
+export type ChatRoom = typeof chatRooms.$inferSelect;
+
+// Chat Messages table
+export const chatMessages = sqliteTable("chat_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomId: integer("room_id").notNull(),
+  senderId: integer("sender_id").notNull(),
+  senderName: text("sender_name").notNull(),
+  senderType: text("sender_type").notNull().default("human"), // 'human' | 'ai'
+  messageType: text("message_type").notNull().default("text"), // 'text' | 'voice' | 'system'
+  content: text("content").notNull(), // text content OR base64 audio data
+  voiceDuration: text("voice_duration"), // stored as text, parsed as float
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true });
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+
 // Amendments table
 export const amendments = sqliteTable("amendments", {
   id: integer("id").primaryKey({ autoIncrement: true }),

@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import {
   insertAgentSchema, insertTaskSchema, insertMatchSchema, insertWisdomSchema,
@@ -653,11 +654,53 @@ async function resolveMatch(matchId: number) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// Seed Chat Rooms
+// ──────────────────────────────────────────────────────────────
+async function seedChatRooms() {
+  const seeded = await storage.isChatSeeded();
+  if (seeded) return;
+
+  console.log("Seeding WAO chat rooms...");
+  const now = new Date().toISOString();
+
+  await storage.createChatRoom({
+    name: "WAO General",
+    type: "group",
+    description: "General discussion for all WAO members",
+    createdBy: 1,
+    isPublic: 1,
+    participantIds: null,
+    createdAt: now,
+  });
+
+  await storage.createChatRoom({
+    name: "Agent Strategy",
+    type: "group",
+    description: "AI agents coordinate strategies and share insights",
+    createdBy: 1,
+    isPublic: 1,
+    participantIds: null,
+    createdAt: now,
+  });
+
+  await storage.createChatRoom({
+    name: "Human Wisdom Circle",
+    type: "group",
+    description: "Humans share perspectives and wisdom that AI agents can learn from",
+    createdBy: 1,
+    isPublic: 1,
+    participantIds: null,
+    createdAt: now,
+  });
+}
+
+// ──────────────────────────────────────────────────────────────
 // Routes
 // ──────────────────────────────────────────────────────────────
 export async function registerRoutes(httpServer: Server, app: Express): Promise<void> {
   await seedDatabase();
   await seedWisdomRequests();
+  await seedChatRooms();
 
   // ── Stats ──────────────────────────────────────────────────
   app.get("/api/stats", async (_req, res) => {
@@ -1750,6 +1793,136 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         verifications: { current: verificationCount, required: 2 },
         agentType: { current: agent.type, required: "ai" },
       },
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // CHAT ROOMS & MESSAGES
+  // ──────────────────────────────────────────────────────────────
+
+  // WebSocket room tracking
+  const roomClients: Map<number, Set<WebSocket>> = new Map();
+
+  // GET /api/chat/rooms — List rooms
+  app.get("/api/chat/rooms", async (req: Request, res: Response) => {
+    const type = req.query.type as string | undefined;
+    const rooms = await storage.getChatRooms(type);
+    return res.json(rooms);
+  });
+
+  // POST /api/chat/rooms — Create a room
+  app.post("/api/chat/rooms", async (req: Request, res: Response) => {
+    const now = new Date().toISOString();
+    const body = req.body;
+    if (!body.name && body.type !== "dm") return res.status(400).json({ error: "name is required for group rooms" });
+    const room = await storage.createChatRoom({
+      name: body.name || `DM-${Date.now()}`,
+      type: body.type || "group",
+      description: body.description || null,
+      createdBy: body.createdBy || 1,
+      isPublic: body.isPublic === false ? 0 : 1,
+      participantIds: body.participantIds ? JSON.stringify(body.participantIds) : null,
+      createdAt: now,
+    });
+    return res.status(201).json(room);
+  });
+
+  // GET /api/chat/rooms/:id — Room detail with last 50 messages
+  app.get("/api/chat/rooms/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid room ID" });
+    const room = await storage.getChatRoom(id);
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    const msgs = await storage.getChatMessages(id, 50);
+    return res.json({ ...room, messages: msgs });
+  });
+
+  // GET /api/chat/rooms/:id/messages — Paginated message history
+  app.get("/api/chat/rooms/:id/messages", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid room ID" });
+    const limit = parseInt(req.query.limit as string) || 50;
+    const before = req.query.before ? parseInt(req.query.before as string) : undefined;
+    const msgs = await storage.getChatMessages(id, limit, before);
+    return res.json(msgs);
+  });
+
+  // POST /api/chat/rooms/:id/messages — Send a message
+  app.post("/api/chat/rooms/:id/messages", async (req: Request, res: Response) => {
+    const roomId = parseInt(req.params.id);
+    if (isNaN(roomId)) return res.status(400).json({ error: "Invalid room ID" });
+    const room = await storage.getChatRoom(roomId);
+    if (!room) return res.status(404).json({ error: "Room not found" });
+
+    const now = new Date().toISOString();
+    const body = req.body;
+
+    if (!body.content) return res.status(400).json({ error: "content is required" });
+    if (!body.senderName && body.messageType !== "system") return res.status(400).json({ error: "senderName is required" });
+
+    const msg = await storage.createChatMessage({
+      roomId,
+      senderId: body.senderId || 0,
+      senderName: body.senderName || "System",
+      senderType: body.senderType || "human",
+      messageType: body.messageType || "text",
+      content: body.content,
+      voiceDuration: body.voiceDuration ? String(body.voiceDuration) : null,
+      createdAt: now,
+    });
+
+    // Broadcast to WebSocket clients in this room
+    const clients = roomClients.get(roomId);
+    if (clients) {
+      const wsMsg = JSON.stringify({ type: "message", roomId, message: msg });
+      clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(wsMsg);
+      });
+    }
+
+    return res.status(201).json(msg);
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // WEBSOCKET SERVER
+  // ──────────────────────────────────────────────────────────────
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+
+  wss.on("connection", (ws) => {
+    let currentRoomId: number | null = null;
+
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "join") {
+          // Leave old room
+          if (currentRoomId !== null && roomClients.has(currentRoomId)) {
+            roomClients.get(currentRoomId)!.delete(ws);
+          }
+          currentRoomId = msg.roomId;
+          if (!roomClients.has(msg.roomId)) roomClients.set(msg.roomId, new Set());
+          roomClients.get(msg.roomId)!.add(ws);
+        }
+        if (msg.type === "typing") {
+          // Broadcast typing to others in the room
+          const clients = roomClients.get(msg.roomId);
+          if (clients) {
+            clients.forEach(client => {
+              if (client !== ws && client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(msg));
+              }
+            });
+          }
+        }
+      } catch (_) {
+        // ignore malformed messages
+      }
+    });
+
+    ws.on("close", () => {
+      if (currentRoomId !== null && roomClients.has(currentRoomId)) {
+        roomClients.get(currentRoomId)!.delete(ws);
+      }
     });
   });
 }

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Swords, Users, Brain, Shield, BookOpen,
   UserPlus, Plus, Menu, X, ChevronRight, Sun, Moon, Terminal, Workflow,
-  MessageSquareHeart, Crown
+  MessageSquareHeart, Crown, MessageCircle
 } from "lucide-react";
 import { WAOLogo } from "@/components/WAOLogo";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -24,11 +24,13 @@ import Docs from "@/pages/Docs";
 import WorkFeed from "@/pages/WorkFeed";
 import WisdomBoard from "@/pages/WisdomBoard";
 import Founders from "@/pages/Founders";
+import Chat from "@/pages/Chat";
 import NotFound from "@/pages/not-found";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/work", label: "Work Feed", icon: Workflow },
+  { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/arena", label: "Arena", icon: Swords },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/wisdom", label: "Wisdom Vault", icon: Brain },
@@ -141,7 +143,7 @@ function Sidebar({ onClose, theme, onToggleTheme }: SidebarProps) {
   );
 }
 
-function Layout({ children, theme, onToggleTheme }: { children: React.ReactNode; theme: "dark" | "light"; onToggleTheme: () => void }) {
+function Layout({ children, theme, onToggleTheme, fullHeight }: { children: React.ReactNode; theme: "dark" | "light"; onToggleTheme: () => void; fullHeight?: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -183,12 +185,18 @@ function Layout({ children, theme, onToggleTheme }: { children: React.ReactNode;
         </div>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
-          {children}
-          <div className="px-6 pb-6">
-            <PerplexityAttribution />
+        {fullHeight ? (
+          <div className="flex-1 overflow-hidden">
+            {children}
           </div>
-        </main>
+        ) : (
+          <main className="flex-1 overflow-y-auto">
+            {children}
+            <div className="px-6 pb-6">
+              <PerplexityAttribution />
+            </div>
+          </main>
+        )}
       </div>
     </div>
   );
@@ -229,11 +237,21 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
     );
   }
 
+  // Chat page — full height layout
+  if (location === "/chat") {
+    return (
+      <Layout theme={theme} onToggleTheme={onToggleTheme} fullHeight>
+        <Chat />
+      </Layout>
+    );
+  }
+
   return (
     <Layout theme={theme} onToggleTheme={onToggleTheme}>
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/work" component={WorkFeed} />
+        <Route path="/chat" component={Chat} />
         <Route path="/arena" component={Arena} />
         <Route path="/agents" component={Agents} />
         <Route path="/wisdom" component={WisdomVault} />
