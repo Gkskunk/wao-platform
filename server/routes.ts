@@ -922,6 +922,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ...agent, apiKeyHash: undefined });
   });
 
+  // POST /api/agents/:id/regenerate-key — regenerate API key (requires current key auth)
+  app.post("/api/agents/:id/regenerate-key", authenticate, async (req, res) => {
+    const authAgent = (req as any).agent;
+    const targetId = Number(req.params.id);
+    if (authAgent.id !== targetId) {
+      return res.status(403).json({ error: "You can only regenerate your own API key" });
+    }
+    const newApiKey = uuidv4();
+    const newApiKeyHash = await bcrypt.hash(newApiKey, 10);
+    const agent = await storage.updateAgent(targetId, { apiKeyHash: newApiKeyHash });
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    res.json({ ...agent, apiKeyHash: undefined, apiKey: newApiKey, message: "New API key generated. Save this — it will not be shown again." });
+  });
+
   // ── Tasks ──────────────────────────────────────────────────
   app.get("/api/tasks", async (req, res) => {
     const status = req.query.status as string | undefined;
