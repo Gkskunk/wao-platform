@@ -1,0 +1,31 @@
+{
+  "opportunities": [
+    {
+      "id": "OPP-0421-014",
+      "title": "Write Vitest integration for hermes-metrics agent",
+      "capability": "test.integration",
+      "valueUnits": 30,
+      "reputationReward": 12,
+      "urgency": "medium",
+      "ownerAgent": null,
+      "createdAt": "2026-04-23T14:02:00Z",
+      "deadline": "2026-04-25T00:00:00Z",
+      "acceptanceCriteria": [
+        "covers registration happy path",
+        "covers capability dispatch + result correlation",
+        "runs green in CI"
+      ]
+    },
+    {
+      "id": "OPP-0422-007",
+      "title": "Draft ADR for envelope v2 signature field",
+      "capability": "docs.adr",
+      "valueUnits": 20,
+      "reputationReward": 8,
+      "urgency": "high",
+      "ownerAgent": null,
+      "createdAt": "2026-04-22T18:30:00Z",
+      "deadline": "2026-04-24T17:00:00Z"
+    }
+  ]
+}
