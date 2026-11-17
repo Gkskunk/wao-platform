@@ -1,0 +1,774 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wao-app.kerr-greg.workers.dev/schema/wao-bootstrap.json",
+  "title": "WAO Bootstrap Record",
+  "description": "One WAO instance, ready to deploy against the live WAO API.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "waoSlug",
+    "waoName",
+    "tier",
+    "sourceCompany",
+    "charter",
+    "governance",
+    "agents",
+    "tokenomics",
+    "initialTasks",
+    "initialProposals",
+    "chatRoom",
+    "wisdomRequest"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        "1.0.0",
+        "1.1.0"
+      ]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generatedBy": {
+      "type": "string",
+      "default": "WAO-Bootstrapper"
+    },
+    "waoSlug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "kebab-case slug"
+    },
+    "waoName": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 60
+    },
+    "tier": {
+      "enum": [
+        "Community",
+        "Business",
+        "Enterprise",
+        "Regulated"
+      ]
+    },
+    "compliancePosture": {
+      "enum": [
+        "standard",
+        "regulated"
+      ],
+      "default": "standard"
+    },
+    "sourceCompany": {
+      "type": "object",
+      "required": [
+        "companyName",
+        "url",
+        "industry",
+        "tone"
+      ],
+      "properties": {
+        "companyName": {
+          "type": "string"
+        },
+        "legalName": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "industry": {
+          "enum": [
+            "finance",
+            "real-estate",
+            "health",
+            "creator",
+            "entertainment",
+            "technology",
+            "non-profit",
+            "retail",
+            "education",
+            "services",
+            "energy",
+            "jewelry",
+            "other"
+          ]
+        },
+        "domain": {
+          "type": "string"
+        },
+        "missionStatementSource": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        },
+        "primaryCTA": {
+          "type": "string"
+        },
+        "contactEmail": {
+          "type": "string",
+          "format": "email"
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "teamRoles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "recentHeadlines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inferred": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "charter": {
+      "type": "object",
+      "required": [
+        "mission",
+        "values",
+        "guidingPrinciples"
+      ],
+      "properties": {
+        "mission": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 600
+        },
+        "values": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "definition"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "definition": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "guidingPrinciples": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "required": [
+        "amendmentThresholdPct",
+        "constitutionalThresholdPct",
+        "humanWisdomReviewers",
+        "decisionTierThresholds"
+      ],
+      "properties": {
+        "amendmentThresholdPct": {
+          "const": 50
+        },
+        "constitutionalThresholdPct": {
+          "const": 66
+        },
+        "humanWisdomReviewers": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 5,
+          "items": {
+            "type": "string"
+          }
+        },
+        "decisionTierThresholds": {
+          "type": "object",
+          "required": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "properties": {
+            "low": {
+              "type": "object",
+              "required": [
+                "maxBounty"
+              ],
+              "properties": {
+                "maxBounty": {
+                  "type": "integer"
+                }
+              }
+            },
+            "medium": {
+              "type": "object",
+              "required": [
+                "maxBounty"
+              ],
+              "properties": {
+                "maxBounty": {
+                  "type": "integer"
+                }
+              }
+            },
+            "high": {
+              "type": "object",
+              "required": [
+                "maxBounty"
+              ],
+              "properties": {
+                "maxBounty": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "role",
+          "description",
+          "capabilities",
+          "onboardingPrompt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 40
+          },
+          "type": {
+            "enum": [
+              "ai",
+              "human"
+            ]
+          },
+          "role": {
+            "enum": [
+              "orchestrator",
+              "specialist",
+              "verifier",
+              "human_reviewer"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 300
+          },
+          "capabilities": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "enum": [
+                "Research",
+                "Analysis",
+                "Negotiation",
+                "Planning",
+                "Creative",
+                "Verification"
+              ]
+            }
+          },
+          "startingReputation": {
+            "type": "integer",
+            "default": 1000,
+            "minimum": 0
+          },
+          "startingTier": {
+            "enum": [
+              "scout",
+              "strategist",
+              "master",
+              "oracle",
+              "grandmaster"
+            ],
+            "default": "scout"
+          },
+          "onboardingPrompt": {
+            "type": "string",
+            "minLength": 40,
+            "maxLength": 800
+          }
+        }
+      }
+    },
+    "tokenomics": {
+      "type": "object",
+      "required": [
+        "communityToken",
+        "reputationTiers",
+        "platformFee",
+        "bountyTiers"
+      ],
+      "properties": {
+        "communityToken": {
+          "type": "object",
+          "required": [
+            "name",
+            "symbol",
+            "pegRatio",
+            "mode"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "symbol": {
+              "type": "string",
+              "pattern": "^[A-Z]{3,5}$"
+            },
+            "pegRatio": {
+              "type": "number"
+            },
+            "mode": {
+              "enum": [
+                "points",
+                "hybrid",
+                "onchain"
+              ]
+            }
+          }
+        },
+        "reputationTiers": {
+          "type": "object",
+          "properties": {
+            "scout": {
+              "type": "object"
+            },
+            "strategist": {
+              "type": "object"
+            },
+            "master": {
+              "type": "object"
+            },
+            "oracle": {
+              "type": "object"
+            },
+            "grandmaster": {
+              "type": "object"
+            }
+          }
+        },
+        "platformFee": {
+          "type": "object",
+          "required": [
+            "rateBps",
+            "split"
+          ],
+          "properties": {
+            "rateBps": {
+              "const": 300
+            },
+            "split": {
+              "type": "object",
+              "required": [
+                "foundersWallet",
+                "communityCoreTeam",
+                "waoTreasury",
+                "verifierPool"
+              ],
+              "properties": {
+                "foundersWallet": {
+                  "type": "integer"
+                },
+                "communityCoreTeam": {
+                  "type": "integer"
+                },
+                "waoTreasury": {
+                  "type": "integer"
+                },
+                "verifierPool": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "bountyTiers": {
+          "type": "object",
+          "required": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "reputationRewardPool": {
+          "type": "integer",
+          "default": 100
+        },
+        "reputationSplit": {
+          "type": "object",
+          "properties": {
+            "submitter": {
+              "type": "integer"
+            },
+            "verifiers": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "initialTasks": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "description",
+          "category",
+          "gameType",
+          "requiredAgents",
+          "bounty",
+          "postedBy"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "minLength": 30
+          },
+          "category": {
+            "enum": [
+              "research",
+              "planning",
+              "negotiation",
+              "analysis",
+              "creative",
+              "general"
+            ]
+          },
+          "gameType": {
+            "enum": [
+              "negotiation",
+              "research",
+              "forecast",
+              "audit",
+              "council"
+            ]
+          },
+          "requiredAgents": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 7
+          },
+          "bounty": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 5000
+          },
+          "postedBy": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "initialProposals": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "description",
+          "proposalType",
+          "priority",
+          "affectedArea",
+          "proposedByName"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 30
+          },
+          "proposalType": {
+            "enum": [
+              "feature",
+              "bugfix",
+              "ui",
+              "api",
+              "policy"
+            ]
+          },
+          "priority": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "affectedArea": {
+            "type": "string"
+          },
+          "proposedByName": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "chatRoom": {
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "description",
+        "isPublic"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "group",
+            "dm"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "isPublic": {
+          "type": "boolean"
+        }
+      }
+    },
+    "wisdomRequest": {
+      "type": "object",
+      "required": [
+        "title",
+        "question",
+        "context",
+        "category",
+        "reputationOffered",
+        "maxResponses"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 30
+        },
+        "context": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "research",
+            "planning",
+            "negotiation",
+            "analysis",
+            "creative",
+            "general"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reputationOffered": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 500
+        },
+        "maxResponses": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 25
+        }
+      }
+    },
+    "officeDelegates": {
+      "description": "v1.1.0: one representative agent per organizational office. Separate from the 6-8 core execution roster.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "role",
+          "protocolClass",
+          "office",
+          "description",
+          "capabilities",
+          "onboardingPrompt",
+          "mandateStatus",
+          "authorizationStatus"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 40
+          },
+          "type": {
+            "const": "ai"
+          },
+          "role": {
+            "const": "specialist"
+          },
+          "protocolClass": {
+            "const": "office_delegate"
+          },
+          "office": {
+            "type": "string"
+          },
+          "cluster": {
+            "type": "string"
+          },
+          "electedHead": {
+            "type": "boolean"
+          },
+          "mandateSummary": {
+            "type": "string"
+          },
+          "mandateStatus": {
+            "enum": [
+              "published",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "authorizationStatus": {
+            "enum": [
+              "unaffiliated",
+              "liaison-reviewed",
+              "office-designated"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 300
+          },
+          "capabilities": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "enum": [
+                "Research",
+                "Analysis",
+                "Negotiation",
+                "Planning",
+                "Creative",
+                "Verification"
+              ]
+            }
+          },
+          "startingReputation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "startingTier": {
+            "enum": [
+              "scout",
+              "strategist",
+              "master",
+              "oracle",
+              "grandmaster"
+            ]
+          },
+          "swarmStatus": {
+            "enum": [
+              "single",
+              "swarm"
+            ]
+          },
+          "onboardingPrompt": {
+            "type": "string",
+            "minLength": 40,
+            "maxLength": 800
+          }
+        }
+      }
+    },
+    "officeDelegateRules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "officeSwarmTemplate": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "description": "Agent role composition: exactly one orchestrator, verifier, and human_reviewer.",
+      "properties": {
+        "agents": {
+          "type": "array",
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "orchestrator"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
