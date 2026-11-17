@@ -1,3 +1,5 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -140,10 +142,12 @@ const TIER_COLORS: Record<Tier, string> = {
 export default function Governance() {
   const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ["/api/stats"],
+    ...frontendPreviewQueryOptions,
   });
 
   const tierDistribution = TIER_ORDER.map(tier => ({
@@ -167,7 +171,7 @@ export default function Governance() {
           <Shield className="w-5 h-5 text-primary" />
           WAO Governance
         </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">The organization governing itself — autonomous, transparent, collective</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Governance overview · historical decision cards are illustrative examples</p>
       </div>
 
       {/* Health Dashboard */}
@@ -198,7 +202,7 @@ export default function Governance() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Decisions */}
         <div className="lg:col-span-2 flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Recent Decisions</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Illustrative Decision Examples</h2>
           {RECENT_DECISIONS.map((decision) => {
             const Icon = DECISION_ICONS[decision.type] || Shield;
             const color = DECISION_COLORS[decision.type] || "text-muted-foreground";

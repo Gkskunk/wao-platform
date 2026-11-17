@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -169,6 +172,7 @@ function ProposalDetail({ id, onClose }: { id: number; onClose: () => void }) {
   const { data: proposal, isLoading } = useQuery<ProposalWithDetails>({
     queryKey: ["/api/proposals", id],
     queryFn: () => apiRequest("GET", `/api/proposals/${id}`).then(r => r.json()),
+    ...frontendPreviewQueryOptions,
   });
 
   const voteMutation = useMutation({
@@ -308,7 +312,7 @@ function ProposalDetail({ id, onClose }: { id: number; onClose: () => void }) {
             variant="outline"
             className="gap-2 hover:bg-emerald-500/10 hover:border-emerald-500/40 hover:text-emerald-400 transition-all"
             onClick={() => voteMutation.mutate("up")}
-            disabled={voteMutation.isPending}
+            disabled={isFrontendPreview || (voteMutation.isPending)}
             data-testid="button-upvote"
           >
             <ThumbsUp className="w-3.5 h-3.5" />
@@ -319,7 +323,7 @@ function ProposalDetail({ id, onClose }: { id: number; onClose: () => void }) {
             variant="outline"
             className="gap-2 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400 transition-all"
             onClick={() => voteMutation.mutate("down")}
-            disabled={voteMutation.isPending}
+            disabled={isFrontendPreview || (voteMutation.isPending)}
             data-testid="button-downvote"
           >
             <ThumbsDown className="w-3.5 h-3.5" />
@@ -345,7 +349,7 @@ function ProposalDetail({ id, onClose }: { id: number; onClose: () => void }) {
               variant="outline"
               className="text-xs h-7"
               onClick={() => statusMutation.mutate(s)}
-              disabled={proposal.status === s || statusMutation.isPending}
+              disabled={isFrontendPreview || (proposal.status === s || statusMutation.isPending)}
               data-testid={`button-status-${s}`}
             >
               <ArrowRight className="w-3 h-3 mr-1" />
@@ -426,7 +430,7 @@ function ProposalDetail({ id, onClose }: { id: number; onClose: () => void }) {
             size="sm"
             className="w-full"
             onClick={() => commentMutation.mutate()}
-            disabled={!commentText.trim() || !commentAuthor.trim() || commentMutation.isPending}
+            disabled={isFrontendPreview || (!commentText.trim() || !commentAuthor.trim() || commentMutation.isPending)}
             data-testid="button-submit-comment"
           >
             {commentMutation.isPending ? "Posting..." : "Post Comment"}
@@ -590,7 +594,7 @@ function ProposeForm({ onClose }: { onClose: () => void }) {
         </Button>
         <Button
           className="flex-1"
-          disabled={!form.title || !form.description || !form.proposedByName || createMutation.isPending}
+          disabled={isFrontendPreview || (!form.title || !form.description || !form.proposedByName || createMutation.isPending)}
           onClick={() => createMutation.mutate()}
           data-testid="button-submit-proposal"
         >
@@ -611,11 +615,13 @@ export default function Build() {
     queryKey: ["/api/proposals"],
     queryFn: () => apiRequest("GET", "/api/proposals").then(r => r.json()),
     refetchInterval: 15000,
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: stats } = useQuery<{ total: number; approved: number; implemented: number }>({
     queryKey: ["/api/proposals/stats"],
     queryFn: () => apiRequest("GET", "/api/proposals/stats").then(r => r.json()),
+    ...frontendPreviewQueryOptions,
   });
 
   const proposalsByStatus = (status: string) =>
@@ -672,7 +678,7 @@ export default function Build() {
                     <span className={cn("text-sm font-semibold", col.headerColor)}>{col.label}</span>
                   </div>
                   <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5 font-medium">
-                    {colProposals.length}
+                    {isFrontendPreview ? "Unavailable" : colProposals.length}
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground -mt-1">{col.description}</p>
@@ -681,7 +687,7 @@ export default function Build() {
                 <div className="space-y-2">
                   {colProposals.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-border p-4 text-center">
-                      <p className="text-xs text-muted-foreground">Nothing here yet</p>
+                      <p className="text-xs text-muted-foreground">{isFrontendPreview ? "Proposals unavailable in preview" : "Nothing here yet"}</p>
                     </div>
                   ) : (
                     colProposals.map(p => (
@@ -701,6 +707,7 @@ export default function Build() {
 
       {/* Floating Propose Button */}
       <button
+        disabled={isFrontendPreview}
         data-testid="button-propose-improvement"
         onClick={() => setShowProposeForm(true)}
         className="fixed bottom-6 right-6 flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-lg hover:bg-primary/90 hover:shadow-xl transition-all duration-150 z-10"

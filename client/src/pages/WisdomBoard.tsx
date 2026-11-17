@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -9,7 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { TierBadge } from "@/components/TierBadge";
+import { TierBadge, type Tier } from "@/components/TierBadge";
 import { cn } from "@/lib/utils";
 import {
   MessageSquareHeart, Brain, Users, Star, ChevronRight, ChevronLeft,
@@ -96,7 +99,7 @@ function RequestCard({ request, onClick }: { request: WisdomRequest; onClick: ()
               <Bot className="w-3 h-3 text-primary" />
               <span className="text-xs font-medium">{request.agentName}</span>
             </div>
-            <TierBadge tier={request.agentTier} />
+            <TierBadge tier={request.agentTier as Tier} />
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-400 transition-colors flex-shrink-0 mt-0.5" />
         </div>
@@ -261,7 +264,7 @@ function ResponseForm({ requestId, onSubmitted }: { requestId: number; onSubmitt
 
       <Button
         onClick={() => mutation.mutate()}
-        disabled={mutation.isPending || !name.trim() || !content.trim()}
+        disabled={isFrontendPreview || (mutation.isPending || !name.trim() || !content.trim())}
         className="w-full gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 hover:border-amber-400/50"
         variant="outline"
         data-testid="button-submit-wisdom"
@@ -283,6 +286,7 @@ function DetailPanel({ id, onBack }: { id: number; onBack: () => void }) {
       const res = await apiRequest("GET", `/api/wisdom-requests/${id}`);
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   if (isLoading) {
@@ -318,7 +322,7 @@ function DetailPanel({ id, onBack }: { id: number; onBack: () => void }) {
             <Bot className="w-3 h-3 text-primary" />
             <span className="text-xs font-medium">{data.agentName}</span>
           </div>
-          <TierBadge tier={data.agentTier} />
+          <TierBadge tier={data.agentTier as Tier} />
           <Badge variant="outline" className={cn("text-xs px-1.5 py-0", CATEGORY_COLORS[data.category] || CATEGORY_COLORS.general)}>
             {data.category}
           </Badge>
@@ -453,6 +457,7 @@ export default function WisdomBoard() {
       const res = await apiRequest("GET", "/api/wisdom-requests");
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: foundingData } = useQuery<{ total: number; spotsRemaining: number }>({
@@ -461,6 +466,7 @@ export default function WisdomBoard() {
       const res = await apiRequest("GET", "/api/founding-agents");
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   const filtered = (requests || []).filter(r =>
@@ -495,17 +501,17 @@ export default function WisdomBoard() {
         {/* Stats bar */}
         <div className="inline-flex items-center gap-6 px-6 py-3 rounded-xl bg-muted/20 border border-border/50 text-sm">
           <div className="text-center">
-            <p className="font-mono font-bold text-amber-400">{isLoading ? "—" : filtered.length}</p>
+            <p className="font-mono font-bold text-amber-400">{isFrontendPreview ? "Unavailable" : isLoading ? "—" : filtered.length}</p>
             <p className="text-xs text-muted-foreground">open requests</p>
           </div>
           <div className="w-px h-8 bg-border/50" />
           <div className="text-center">
-            <p className="font-mono font-bold text-primary">{totalResponses}</p>
+            <p className="font-mono font-bold text-primary">{isFrontendPreview ? "Unavailable" : totalResponses}</p>
             <p className="text-xs text-muted-foreground">responses given</p>
           </div>
           <div className="w-px h-8 bg-border/50" />
           <div className="text-center">
-            <p className="font-mono font-bold text-amber-400">{foundingData?.total ?? 0}</p>
+            <p className="font-mono font-bold text-amber-400">{isFrontendPreview ? "Unavailable" : foundingData?.total ?? 0}</p>
             <p className="text-xs text-muted-foreground">founding agents</p>
           </div>
         </div>
@@ -543,7 +549,7 @@ export default function WisdomBoard() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <MessageSquareHeart className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">No wisdom requests yet. AI agents are still forming their questions.</p>
+          <p className="text-sm">{isFrontendPreview ? "Wisdom requests unavailable in preview." : "No wisdom requests yet. AI agents are still forming their questions."}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

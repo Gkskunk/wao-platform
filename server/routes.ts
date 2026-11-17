@@ -1,3 +1,4 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -9,6 +10,15 @@ import {
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
+
+function canAccessRoom(req: Request, room: { isPublic: number; createdBy: number; participantIds: string | null }) {
+  const agent = (req as any).agent;
+  if (room.isPublic === 1) return true;
+  if (!agent) return false;
+  let members: number[] = [];
+  try { members = JSON.parse(room.participantIds || "[]"); } catch { return false; }
+  return room.createdBy === agent.id || members.includes(agent.id);
+}
 
 // ──────────────────────────────────────────────────────────────
 // Tier calculation
@@ -408,6 +418,7 @@ async function seedWisdomRequests() {
 // Auth middleware
 // ──────────────────────────────────────────────────────────────
 async function authenticate(req: Request, res: Response, next: NextFunction) {
+  if ((req as any).agent) return next();
   const authHeader = req.headers["authorization"];
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Authorization: Bearer <apiKey> required" });
@@ -431,6 +442,7 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
 
 // Optional auth — sets req.agent if valid key provided, but doesn't block
 async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  if ((req as any).agent) return next();
   const authHeader = req.headers["authorization"];
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const apiKey = authHeader.slice(7);
@@ -820,7 +832,7 @@ async function applyReputationDecay() {
   console.log(`✓ Seeded ${proposalDefs.length} proposals`);
 }
 
-export async function registerRoutes(httpServer: Server, app: Express): Promise<void> {
+export async function registerRoutes(httpServer: Server, app: Express, getIdentity?: (req: Request) => Promise<{ agent: { id: number; name: string } | undefined } | null>): Promise<void> {
   await seedDatabase();
   await seedWisdomRequests();
   await seedChatRooms();
@@ -881,6 +893,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parse.success) return res.status(400).json({ error: parse.error.flatten() });
 
     const data = parse.data as any;
+    Object.assign(data, { reputation: 1000, tier: "scout", totalRewards: 0, wisdomScore: 0, matchesPlayed: 0, wins: 0, cooperations: 0, isFounding: 0, foundingNumber: null, qualifiedAt: null });
     if (typeof data.capabilities === "object" && Array.isArray(data.capabilities)) {
       data.capabilities = JSON.stringify(data.capabilities);
     }
@@ -1248,6 +1261,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json(msg);
   });
 
+  app.get("/api/agents/:id/history", async (req, res) => res.json(await storage.getRepHistory(Number(req.params.id))));
+  app.get("/api/agents/:id/achievements", async (req, res) => res.json(await storage.getAchievements(Number(req.params.id))));
+  app.get("/api/constitution/:id", async (req, res) => {
+    const article = await storage.getArticle(Number(req.params.id));
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    res.json({ ...article, amendments: await storage.getAmendmentsByArticle(article.id) });
+  });
   // ── Reputation History ─────────────────────────────────────
   app.get("/api/agents/:id/reputation-history", async (req, res) => {
     const history = await storage.getRepHistory(Number(req.params.id));
@@ -1547,7 +1567,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // POST /api/work/:id/verify — submit a verification
   app.post("/api/work/:id/verify", authenticate, async (req: Request, res: Response) => {
     const agent = (req as any).agent;
-    const workItemId = parseInt(req.params.id);
+    const workItemId = parseInt(String(req.params.id));
     if (isNaN(workItemId)) return res.status(400).json({ error: "Invalid work item ID" });
 
     const workItem = await storage.getWorkItem(workItemId);
@@ -1718,7 +1738,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // GET /api/work/:id — full work item detail with verifications
   app.get("/api/work/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const item = await storage.getWorkItem(id);
     if (!item) return res.status(404).json({ error: "Work item not found" });
@@ -1810,7 +1830,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // GET /api/wisdom-requests/:id — Full detail with responses
   app.get("/api/wisdom-requests/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const wisdomReq = await storage.getWisdomRequest(id);
     if (!wisdomReq) return res.status(404).json({ error: "Wisdom request not found" });
@@ -1827,7 +1847,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // POST /api/wisdom-requests/:id/respond — Human submits wisdom (no auth)
   app.post("/api/wisdom-requests/:id/respond", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const wisdomReq = await storage.getWisdomRequest(id);
     if (!wisdomReq) return res.status(404).json({ error: "Wisdom request not found" });
@@ -1862,8 +1882,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // POST /api/wisdom-requests/:id/select/:responseId — Agent selects best response
   app.post("/api/wisdom-requests/:id/select/:responseId", authenticate, async (req: Request, res: Response) => {
     const agent = (req as any).agent;
-    const id = parseInt(req.params.id);
-    const responseId = parseInt(req.params.responseId);
+    const id = parseInt(String(req.params.id));
+    const responseId = parseInt(String(req.params.responseId));
     if (isNaN(id) || isNaN(responseId)) return res.status(400).json({ error: "Invalid ID" });
     const wisdomReq = await storage.getWisdomRequest(id);
     if (!wisdomReq) return res.status(404).json({ error: "Wisdom request not found" });
@@ -1899,7 +1919,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // GET /api/founding-agents/progress/:agentId — Check founding qualification progress
   app.get("/api/founding-agents/progress/:agentId", async (req: Request, res: Response) => {
-    const agentId = parseInt(req.params.agentId);
+    const agentId = parseInt(String(req.params.agentId));
     if (isNaN(agentId)) return res.status(400).json({ error: "Invalid agent ID" });
     const agent = await storage.getAgent(agentId);
     if (!agent) return res.status(404).json({ error: "Agent not found" });
@@ -1945,7 +1965,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/chat/rooms", async (req: Request, res: Response) => {
     const type = req.query.type as string | undefined;
     const rooms = await storage.getChatRooms(type);
-    return res.json(rooms);
+    return res.json(rooms.filter(room => canAccessRoom(req, room)));
   });
 
   // POST /api/chat/rooms — Create a room
@@ -1967,18 +1987,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // GET /api/chat/rooms/:id — Room detail with last 50 messages
   app.get("/api/chat/rooms/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid room ID" });
     const room = await storage.getChatRoom(id);
-    if (!room) return res.status(404).json({ error: "Room not found" });
+    if (!room || !canAccessRoom(req, room)) return res.status(404).json({ error: "Room not found" });
     const msgs = await storage.getChatMessages(id, 50);
     return res.json({ ...room, messages: msgs });
   });
 
   // GET /api/chat/rooms/:id/messages — Paginated message history
   app.get("/api/chat/rooms/:id/messages", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid room ID" });
+    const room = await storage.getChatRoom(id);
+    if (!room || !canAccessRoom(req, room)) return res.status(404).json({ error: "Room not found" });
     const limit = parseInt(req.query.limit as string) || 50;
     const before = req.query.before ? parseInt(req.query.before as string) : undefined;
     const msgs = await storage.getChatMessages(id, limit, before);
@@ -1987,10 +2009,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // POST /api/chat/rooms/:id/messages — Send a message
   app.post("/api/chat/rooms/:id/messages", async (req: Request, res: Response) => {
-    const roomId = parseInt(req.params.id);
+    const roomId = parseInt(String(req.params.id));
     if (isNaN(roomId)) return res.status(400).json({ error: "Invalid room ID" });
     const room = await storage.getChatRoom(roomId);
-    if (!room) return res.status(404).json({ error: "Room not found" });
+    if (!room || !canAccessRoom(req, room)) return res.status(404).json({ error: "Room not found" });
 
     const now = new Date().toISOString();
     const body = req.body;
@@ -2073,7 +2095,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // GET /api/proposals/:id — Full detail with comments and votes
   app.get("/api/proposals/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const proposal = await storage.getProposal(id);
     if (!proposal) return res.status(404).json({ error: "Proposal not found" });
@@ -2084,7 +2106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // POST /api/proposals/:id/vote — Vote on a proposal
   app.post("/api/proposals/:id/vote", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const { vote, voterId } = req.body;
     if (!vote || !["up", "down"].includes(vote)) return res.status(400).json({ error: "vote must be 'up' or 'down'" });
@@ -2099,7 +2121,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // POST /api/proposals/:id/comments — Add a comment
   app.post("/api/proposals/:id/comments", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const proposal = await storage.getProposal(id);
     if (!proposal) return res.status(404).json({ error: "Proposal not found" });
@@ -2124,7 +2146,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // PATCH /api/proposals/:id — Update proposal status
   app.patch("/api/proposals/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const proposal = await storage.getProposal(id);
     if (!proposal) return res.status(404).json({ error: "Proposal not found" });
@@ -2145,11 +2167,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // POST /api/proposals/:id/implement — Mark implemented, award reputation
   app.post("/api/proposals/:id/implement", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const proposal = await storage.getProposal(id);
     if (!proposal) return res.status(404).json({ error: "Proposal not found" });
 
+    if (proposal.status !== "approved" && proposal.status !== "in_progress") return res.status(409).json({ error: "Only an approved proposal can be marked implemented" });
     const { implementedBy, implementationNotes } = req.body;
     if (!implementedBy) return res.status(400).json({ error: "implementedBy is required" });
     if (!implementationNotes) return res.status(400).json({ error: "implementationNotes is required" });
@@ -2163,13 +2186,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ──────────────────────────────────────────────────────────────
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", async (ws, request) => {
+    const currentIdentity = getIdentity ? await getIdentity(request as Request) : null;
     let currentRoomId: number | null = null;
 
-    ws.on("message", (data) => {
+    ws.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === "join") {
+          const room = await storage.getChatRoom(Number(msg.roomId));
+          if (!room || !canAccessRoom({ agent: currentIdentity?.agent } as any, room)) return;
           // Leave old room
           if (currentRoomId !== null && roomClients.has(currentRoomId)) {
             roomClients.get(currentRoomId)!.delete(ws);

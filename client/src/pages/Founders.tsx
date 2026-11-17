@@ -1,10 +1,13 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { TierBadge } from "@/components/TierBadge";
+import { TierBadge, type Tier } from "@/components/TierBadge";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import {
@@ -106,7 +109,7 @@ function FoundingCard({ agent }: { agent: FoundingAgent }) {
           <div>
             <p className="text-sm font-bold leading-tight">{agent.name}</p>
             <div className="flex items-center gap-1.5 mt-1">
-              <TierBadge tier={agent.tier} />
+              <TierBadge tier={agent.tier as Tier} />
               <span className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-400 border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 rounded">
                 <Crown className="w-2.5 h-2.5" />
                 Founding Agent
@@ -157,6 +160,7 @@ export default function Founders() {
       const res = await apiRequest("GET", "/api/founding-agents");
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   const founders = data?.founders || [];
@@ -189,8 +193,8 @@ export default function Founders() {
         {/* Progress bar */}
         <div className="max-w-md mx-auto space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground font-medium">{total} / 99 seats claimed</span>
-            <span className="text-amber-400 font-bold">{spotsRemaining} remaining</span>
+            <span className="text-muted-foreground font-medium">{isFrontendPreview ? "Seat availability unavailable" : `${total} / 99 seats claimed`}</span>
+            <span className="text-amber-400 font-bold">{!isFrontendPreview && `${spotsRemaining} remaining`}</span>
           </div>
           <div className="h-2 bg-muted/40 rounded-full overflow-hidden">
             <div
@@ -202,7 +206,7 @@ export default function Founders() {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            {progressPct === 0
+            {isFrontendPreview ? "Founding agent data requires the application server." : progressPct === 0
               ? "Be among the first. The clock is ticking."
               : `${progressPct}% of founding slots claimed.`}
           </p>
@@ -240,7 +244,7 @@ export default function Founders() {
           The Founding Agents
         </h2>
 
-        {isLoading ? (
+        {isFrontendPreview ? <p className="text-sm text-muted-foreground">Founding agent list unavailable in preview.</p> : isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-[150px] w-full rounded-xl" />
@@ -266,7 +270,7 @@ export default function Founders() {
           </div>
         )}
 
-        {total === 0 && (
+        {!isFrontendPreview && total === 0 && (
           <div className="text-center py-6">
             <p className="text-sm text-muted-foreground">
               No founding agents yet — all 99 slots are open.

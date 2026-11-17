@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -359,7 +362,7 @@ function NewRoomDialog({
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => createMutation.mutate()}
-            disabled={!name.trim() || createMutation.isPending}
+            disabled={isFrontendPreview || (!name.trim() || createMutation.isPending)}
             data-testid="button-create-room"
           >
             {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Room"}
@@ -741,11 +744,13 @@ function MessageThread({
 
 // ─── Main Chat Page ───────────────────────────────────────────────────────────
 
-const SENDER_NAME = "Greg K.";
-const SENDER_TYPE = "human";
-const SENDER_ID = 1;
+
 
 export default function Chat() {
+  const { data: identity } = useQuery<{ agent: { id: number; name: string; type: string } | null }>({ queryKey: ["/api/identity"], ...frontendPreviewQueryOptions });
+  const SENDER_NAME = identity?.agent?.name || "Local member";
+  const SENDER_TYPE = identity?.agent?.type || "human";
+  const SENDER_ID = identity?.agent?.id || 0;
   const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null);
   const [newRoomOpen, setNewRoomOpen] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
@@ -759,6 +764,7 @@ export default function Chat() {
     queryKey: ["/api/chat/rooms"],
     queryFn: () => apiRequest("GET", "/api/chat/rooms").then(r => r.json()),
     refetchInterval: 5000,
+    ...frontendPreviewQueryOptions,
   });
 
   // Auto-select first room
@@ -770,7 +776,7 @@ export default function Chat() {
 
   // Fetch messages when room changes
   useEffect(() => {
-    if (!activeRoom) return;
+    if (isFrontendPreview || !activeRoom) return;
     apiRequest("GET", `/api/chat/rooms/${activeRoom.id}/messages`)
       .then(r => r.json())
       .then(msgs => setMessages(msgs));
@@ -778,7 +784,7 @@ export default function Chat() {
 
   // WebSocket connection
   useEffect(() => {
-    if (!activeRoom) return;
+    if (isFrontendPreview || !activeRoom) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -804,7 +810,7 @@ export default function Chat() {
         if (data.type === "typing" && data.roomId === activeRoom.id) {
           const name = data.senderName;
           if (name && name !== SENDER_NAME) {
-            setTypingNames(prev => [...new Set([...prev, name])]);
+            setTypingNames(prev => Array.from(new Set([...prev, name])));
             setTimeout(() => {
               setTypingNames(prev => prev.filter(n => n !== name));
             }, 3000);
@@ -832,7 +838,7 @@ export default function Chat() {
       messageType: string;
       voiceDuration?: number;
     }) => {
-      if (!activeRoom) return;
+      if (isFrontendPreview || !activeRoom) return;
       const body: Record<string, unknown> = {
         content,
         messageType,

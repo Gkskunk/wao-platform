@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -296,7 +299,7 @@ function VerifyDialog({ item, onClose }: VerifyDialogProps) {
             <Button
               className="flex-1 h-8 text-xs"
               onClick={() => mutation.mutate({ verdict, score, feedback, improvement })}
-              disabled={mutation.isPending}
+              disabled={isFrontendPreview || (mutation.isPending)}
               data-testid="button-submit-verify"
             >
               {mutation.isPending ? "Submitting..." : "Submit Verification"}
@@ -316,6 +319,7 @@ function WorkItemDetailDialog({ item, onClose, onVerify }: { item: WorkItemEnric
     queryKey: ["/api/work", item?.id],
     queryFn: () => apiRequest("GET", `/api/work/${item!.id}`).then(r => r.json()),
     enabled: !!item,
+    ...frontendPreviewQueryOptions,
   });
 
   if (!item) return null;
@@ -419,11 +423,13 @@ export default function WorkFeed() {
   const { data: items, isLoading } = useQuery<WorkItemEnriched[]>({
     queryKey: ["/api/work"],
     refetchInterval: 15000,
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: stats } = useQuery<WorkStats>({
     queryKey: ["/api/work/stats"],
     refetchInterval: 30000,
+    ...frontendPreviewQueryOptions,
   });
 
   const grouped: Record<string, WorkItemEnriched[]> = {
@@ -454,7 +460,7 @@ export default function WorkFeed() {
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dot-pulse inline-block" />
-          Live
+          {isFrontendPreview ? "Preview" : "Live"}
         </div>
       </div>
 
@@ -498,7 +504,7 @@ export default function WorkFeed() {
                   <span className={cn("text-xs font-semibold", statusCfg.color)}>{col.label}</span>
                 </div>
                 <Badge variant="outline" className={cn("text-xs font-mono", statusCfg.bg, statusCfg.border, statusCfg.color)}>
-                  {colItems.length}
+                  {isFrontendPreview ? "Unavailable" : colItems.length}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground px-1 -mt-1">{col.description}</p>
@@ -511,7 +517,7 @@ export default function WorkFeed() {
                   ))
                 ) : colItems.length === 0 ? (
                   <div className="flex items-center justify-center h-20 rounded-lg border border-dashed border-border/40 text-xs text-muted-foreground/50">
-                    No items
+                    {isFrontendPreview ? "Work data unavailable" : "No items"}
                   </div>
                 ) : (
                   colItems.map(item => (

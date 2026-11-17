@@ -1,3 +1,5 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { requireBackend, frontendPreviewQueryOptions } from "./frontendPreview";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
@@ -14,6 +16,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  requireBackend();
   const res = await fetch(`${API_BASE}${url}`, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
@@ -30,6 +33,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    requireBackend();
     const res = await fetch(`${API_BASE}${queryKey.join("/")}`);
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
@@ -48,6 +52,7 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       staleTime: Infinity,
       retry: false,
+      ...frontendPreviewQueryOptions,
     },
     mutations: {
       retry: false,

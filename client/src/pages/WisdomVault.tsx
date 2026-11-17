@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -41,10 +44,12 @@ export default function WisdomVault() {
 
   const { data: wisdom, isLoading } = useQuery<WisdomEntry[]>({
     queryKey: ["/api/wisdom"],
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: agents } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
+    ...frontendPreviewQueryOptions,
   });
 
   const wisdomForm = useForm<WisdomForm>({
@@ -114,19 +119,19 @@ export default function WisdomVault() {
       <div className="grid grid-cols-3 gap-4">
         <Card className="border-card-border bg-card">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold font-mono text-amber-400">{wisdom?.length ?? 0}</p>
+            <p className={cn(isFrontendPreview ? "text-xs sm:text-sm" : "text-2xl", "font-bold font-mono text-amber-400")}>{isFrontendPreview ? "Unavailable" : wisdom?.length ?? 0}</p>
             <p className="text-xs text-muted-foreground mt-1">Total Entries</p>
           </CardContent>
         </Card>
         <Card className="border-card-border bg-card">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold font-mono text-emerald-400">{verifiedCount}</p>
+            <p className={cn(isFrontendPreview ? "text-xs sm:text-sm" : "text-2xl", "font-bold font-mono text-emerald-400")}>{isFrontendPreview ? "Unavailable" : verifiedCount}</p>
             <p className="text-xs text-muted-foreground mt-1">Verified</p>
           </CardContent>
         </Card>
         <Card className="border-card-border bg-card">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold font-mono text-primary">{totalUpvotes}</p>
+            <p className={cn(isFrontendPreview ? "text-xs sm:text-sm" : "text-2xl", "font-bold font-mono text-primary")}>{isFrontendPreview ? "Unavailable" : totalUpvotes}</p>
             <p className="text-xs text-muted-foreground mt-1">Total Upvotes</p>
           </CardContent>
         </Card>
@@ -165,7 +170,7 @@ export default function WisdomVault() {
               <CardContent className="p-8 text-center flex flex-col items-center gap-3">
                 <Brain className="w-8 h-8 text-muted-foreground/30" />
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">The Wisdom Vault is empty</p>
+                  <p className="text-sm font-medium text-muted-foreground">{isFrontendPreview ? "Wisdom data unavailable in preview" : "The Wisdom Vault is empty"}</p>
                   <p className="text-xs text-muted-foreground/60 mt-1">Complete a game to capture your first insight, or submit one manually</p>
                 </div>
               </CardContent>
@@ -204,7 +209,7 @@ export default function WisdomVault() {
                     </div>
                     <button
                       onClick={() => upvoteMutation.mutate(entry.id)}
-                      disabled={upvoteMutation.isPending}
+                      disabled={isFrontendPreview || (upvoteMutation.isPending)}
                       className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
                       data-testid={`upvote-wisdom-${entry.id}`}
                     >
@@ -230,7 +235,7 @@ export default function WisdomVault() {
             </CardHeader>
             <CardContent className="px-4 pb-4">
               <Form {...wisdomForm}>
-                <form onSubmit={wisdomForm.handleSubmit(d => submitMutation.mutate(d))} className="flex flex-col gap-3">
+                <form onSubmit={wisdomForm.handleSubmit(d => submitMutation.mutate(d))} className="flex flex-col gap-3"><fieldset disabled={isFrontendPreview} className="contents">
                   <FormField
                     control={wisdomForm.control}
                     name="content"
@@ -271,13 +276,13 @@ export default function WisdomVault() {
                   />
                   <Button
                     type="submit"
-                    disabled={submitMutation.isPending}
+                    disabled={isFrontendPreview || (submitMutation.isPending)}
                     className="w-full h-8 text-sm"
                     data-testid="button-submit-wisdom"
                   >
                     {submitMutation.isPending ? "Submitting..." : "Submit Wisdom"}
                   </Button>
-                </form>
+                </fieldset></form>
               </Form>
             </CardContent>
           </Card>

@@ -1,3 +1,4 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
 import {
   agents, tasks, matches, wisdomEntries,
   messages, reputationHistory, achievements, constitutionArticles, amendments,
@@ -27,8 +28,12 @@ import {
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc } from "drizzle-orm";
+import fs from "node:fs";
+import path from "node:path";
 
-const sqlite = new Database("data.db");
+const dbFile = process.env.DB_PATH || (fs.existsSync("data.db") ? "data.db" : ".data/wao.db");
+fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+export const sqlite = new Database(dbFile);
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);

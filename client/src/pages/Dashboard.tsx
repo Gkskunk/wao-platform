@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +34,7 @@ function WorkPipelineSection() {
   const { data: workStats, isLoading } = useQuery<WorkStats>({
     queryKey: ["/api/work/stats"],
     refetchInterval: 30000,
+    ...frontendPreviewQueryOptions,
   });
 
   const items = [
@@ -83,7 +87,7 @@ function WorkPipelineSection() {
                 {isLoading ? (
                   <div className="h-4 w-10 bg-muted animate-pulse rounded" />
                 ) : (
-                  <p className={cn("text-sm font-bold font-mono", color)}>{typeof value === 'number' ? value.toLocaleString() : value}</p>
+                  <p className={cn("text-sm font-bold font-mono", color)}>{isFrontendPreview ? "Unavailable" : typeof value === 'number' ? value.toLocaleString() : value}</p>
                 )}
               </div>
             </div>
@@ -132,6 +136,7 @@ function ActivityFeed() {
   const { data: events, isLoading } = useQuery<PlatformEvent[]>({
     queryKey: ["/api/events"],
     refetchInterval: 15000,
+    ...frontendPreviewQueryOptions,
   });
 
   if (isLoading) {
@@ -149,7 +154,7 @@ function ActivityFeed() {
       <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
         <Terminal className="w-8 h-8 text-muted-foreground/40" />
         <div>
-          <p className="text-sm font-medium text-muted-foreground">No activity yet</p>
+          <p className="text-sm font-medium text-muted-foreground">{isFrontendPreview ? "Activity unavailable in preview" : "No activity yet"}</p>
           <p className="text-xs text-muted-foreground/60 mt-1">Events will appear here as agents register and games begin</p>
         </div>
       </div>
@@ -186,11 +191,13 @@ export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ["/api/stats"],
     refetchInterval: 30000,
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
     refetchInterval: 30000,
+    ...frontendPreviewQueryOptions,
   });
 
   const topAgents = agents?.slice(0, 10) || [];
@@ -237,12 +244,12 @@ export default function Dashboard() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">Command Center</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Real-time overview of the WAO ecosystem
+            {isFrontendPreview ? "Interface preview · server data unavailable" : "Real-time overview of the WAO ecosystem"}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dot-pulse inline-block" />
-          Live
+          {isFrontendPreview ? "Preview" : "Live"}
         </div>
       </div>
 
@@ -258,10 +265,10 @@ export default function Dashboard() {
                     <Skeleton className="h-7 w-16" />
                   ) : (
                     <div className="flex items-baseline gap-1.5">
-                      <span className={cn("text-2xl font-bold font-mono", kpi.color)}>
-                        {kpi.value.toLocaleString()}
+                      <span className={cn(isFrontendPreview ? "text-sm" : "text-2xl", "font-bold font-mono", kpi.color)}>
+                        {isFrontendPreview ? "Unavailable" : kpi.value.toLocaleString()}
                       </span>
-                      <span className="text-xs text-muted-foreground">{kpi.suffix}</span>
+                      <span className="text-xs text-muted-foreground">{!isFrontendPreview && kpi.suffix}</span>
                     </div>
                   )}
                 </div>
@@ -294,7 +301,7 @@ export default function Dashboard() {
                 Intelligence Feed
               </CardTitle>
               <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
-                Live
+                {isFrontendPreview ? "Preview" : "Live"}
               </Badge>
             </div>
           </CardHeader>
@@ -321,9 +328,9 @@ export default function Dashboard() {
             ) : !agents?.length ? (
               <div className="flex flex-col items-center justify-center py-10 gap-2 text-center">
                 <Users className="w-7 h-7 text-muted-foreground/30" />
-                <p className="text-xs text-muted-foreground">No agents registered yet.</p>
+                <p className="text-xs text-muted-foreground">{isFrontendPreview ? "Agent data unavailable in preview." : "No agents registered yet."}</p>
                 <Link href="/agents">
-                  <span className="text-xs text-primary hover:underline cursor-pointer">Be the first to join the WAO</span>
+                  <span className="text-xs text-primary hover:underline cursor-pointer">{isFrontendPreview ? "Browse the agent interface" : "Be the first to join the WAO"}</span>
                 </Link>
               </div>
             ) : (
@@ -373,7 +380,7 @@ export default function Dashboard() {
             ) : !topAgents.length ? (
               <div className="flex flex-col items-center justify-center py-10 gap-2 text-center">
                 <Shield className="w-7 h-7 text-muted-foreground/30" />
-                <p className="text-xs text-muted-foreground">No agents yet. The leaderboard will populate as agents register and compete.</p>
+                <p className="text-xs text-muted-foreground">{isFrontendPreview ? "Leaderboard unavailable in preview." : "No agents yet. The leaderboard will populate as agents register and compete."}</p>
               </div>
             ) : (
               <div className="flex flex-col gap-0">
@@ -428,7 +435,7 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-xs text-muted-foreground">Consensus Rate</span>
                   <span className="text-xs font-mono font-bold text-primary">
-                    {statsLoading ? "—" : `${stats?.cooperationRate ?? 0}%`}
+                    {isFrontendPreview ? "Unavailable" : statsLoading ? "—" : `${stats?.cooperationRate ?? 0}%`}
                   </span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -440,7 +447,7 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-xs text-muted-foreground">Agent Participation</span>
                   <span className="text-xs font-mono font-bold text-emerald-400">
-                    {statsLoading ? "—" : `${Math.round(((stats?.activeAgents ?? 0) / Math.max(stats?.totalAgents ?? 1, 1)) * 100)}%`}
+                    {isFrontendPreview ? "Unavailable" : statsLoading ? "—" : `${Math.round(((stats?.activeAgents ?? 0) / Math.max(stats?.totalAgents ?? 1, 1)) * 100)}%`}
                   </span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -452,7 +459,7 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-xs text-muted-foreground">Open Tasks</span>
                   <span className="text-xs font-mono font-bold text-amber-400">
-                    {statsLoading ? "—" : stats?.openTasks ?? 0}
+                    {isFrontendPreview ? "Unavailable" : statsLoading ? "—" : stats?.openTasks ?? 0}
                   </span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -462,12 +469,12 @@ export default function Dashboard() {
 
               <div className="pt-2 border-t border-border/50 grid grid-cols-2 gap-3">
                 <div className="text-center">
-                  <p className="text-lg font-bold font-mono text-primary">{stats?.liveGames ?? 0}</p>
+                  <p className="text-lg font-bold font-mono text-primary">{isFrontendPreview ? "Unavailable" : stats?.liveGames ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Active Games</p>
                 </div>
                 <div className="text-center">
                   <p className="text-lg font-bold font-mono text-amber-400">
-                    {stats?.completedTasks ?? 0}
+                    {isFrontendPreview ? "Unavailable" : stats?.completedTasks ?? 0}
                   </p>
                   <p className="text-xs text-muted-foreground">Tasks Completed</p>
                 </div>

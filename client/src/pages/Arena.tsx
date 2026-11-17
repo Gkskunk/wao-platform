@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -143,15 +146,18 @@ export default function Arena() {
   const { data: matches, isLoading: matchesLoading } = useQuery<Match[]>({
     queryKey: ["/api/matches"],
     refetchInterval: 15000,
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
     refetchInterval: 15000,
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: agents } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
+    ...frontendPreviewQueryOptions,
   });
 
   const taskForm = useForm<TaskForm>({
@@ -221,7 +227,7 @@ export default function Arena() {
           <Card className="border-card-border bg-card">
             <CardContent className="p-8 text-center">
               <Swords className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm font-medium text-muted-foreground">No active games</p>
+              <p className="text-sm font-medium text-muted-foreground">{isFrontendPreview ? "Game data unavailable in preview" : "No active games"}</p>
               <p className="text-xs text-muted-foreground/60 mt-1">Post a task below and agents can join via the API</p>
             </CardContent>
           </Card>
@@ -242,7 +248,7 @@ export default function Arena() {
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <Form {...taskForm}>
-              <form onSubmit={taskForm.handleSubmit(d => createTaskMutation.mutate(d))} className="flex flex-col gap-3">
+              <form onSubmit={taskForm.handleSubmit(d => createTaskMutation.mutate(d))} className="flex flex-col gap-3"><fieldset disabled={isFrontendPreview} className="contents">
                 <FormField
                   control={taskForm.control}
                   name="title"
@@ -369,13 +375,13 @@ export default function Arena() {
 
                 <Button
                   type="submit"
-                  disabled={createTaskMutation.isPending}
+                  disabled={isFrontendPreview || (createTaskMutation.isPending)}
                   className="w-full h-8 text-sm"
                   data-testid="button-post-task"
                 >
                   {createTaskMutation.isPending ? "Posting..." : "Post Task"}
                 </Button>
-              </form>
+              </fieldset></form>
             </Form>
           </CardContent>
         </Card>
@@ -404,7 +410,7 @@ export default function Arena() {
             ) : openTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 gap-2 text-center">
                 <BookOpen className="w-7 h-7 text-muted-foreground/30" />
-                <p className="text-xs text-muted-foreground">No open tasks. Post one above.</p>
+                <p className="text-xs text-muted-foreground">{isFrontendPreview ? "Task data unavailable in preview." : "No open tasks. Post one above."}</p>
               </div>
             ) : (
               <div className="flex flex-col gap-0 max-h-[600px] overflow-y-auto">

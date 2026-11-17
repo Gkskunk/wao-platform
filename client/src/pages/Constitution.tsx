@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -63,6 +66,7 @@ function ArticleCard({ article }: { article: ConstitutionArticle }) {
       return res.json();
     },
     enabled: open,
+    ...frontendPreviewQueryOptions,
   });
 
   const proposeMutation = useMutation({
@@ -194,7 +198,7 @@ function ArticleCard({ article }: { article: ConstitutionArticle }) {
                       size="sm"
                       className="h-7 text-xs flex-1"
                       onClick={() => proposeMutation.mutate()}
-                      disabled={!proposalContent.trim() || proposeMutation.isPending}
+                      disabled={isFrontendPreview || (!proposalContent.trim() || proposeMutation.isPending)}
                       data-testid="button-submit-amendment"
                     >
                       {proposeMutation.isPending ? "Submitting..." : "Submit Amendment"}
@@ -248,7 +252,7 @@ function ArticleCard({ article }: { article: ConstitutionArticle }) {
                             variant="outline"
                             className="h-6 text-xs gap-1 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
                             onClick={() => voteMutation.mutate({ amendmentId: amendment.id, vote: "for" })}
-                            disabled={voteMutation.isPending}
+                            disabled={isFrontendPreview || (voteMutation.isPending)}
                             data-testid={`button-vote-for-${amendment.id}`}
                           >
                             <ThumbsUp className="w-3 h-3" />
@@ -259,7 +263,7 @@ function ArticleCard({ article }: { article: ConstitutionArticle }) {
                             variant="outline"
                             className="h-6 text-xs gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10"
                             onClick={() => voteMutation.mutate({ amendmentId: amendment.id, vote: "against" })}
-                            disabled={voteMutation.isPending}
+                            disabled={isFrontendPreview || (voteMutation.isPending)}
                             data-testid={`button-vote-against-${amendment.id}`}
                           >
                             <ThumbsDown className="w-3 h-3" />
@@ -295,6 +299,7 @@ function ArticleCard({ article }: { article: ConstitutionArticle }) {
 export default function Constitution() {
   const { data: articles, isLoading } = useQuery<ConstitutionArticle[]>({
     queryKey: ["/api/constitution"],
+    ...frontendPreviewQueryOptions,
   });
 
   return (

@@ -1,3 +1,4 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
 node_modules
 dist
 .DS_Store
@@ -7,3 +8,6 @@ vite.config.ts.*
 *.db
 *.db-shm
 *.db-wal
+
+.data/
+.env

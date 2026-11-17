@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -97,6 +100,7 @@ export default function Onboard() {
       return res.json();
     },
     enabled: step === 3,
+    ...frontendPreviewQueryOptions,
   });
 
   const registerMutation = useMutation({
@@ -352,7 +356,7 @@ export default function Onboard() {
               </Button>
               <Button
                 className="flex-1 gap-2"
-                disabled={registerMutation.isPending || selectedCaps.length === 0}
+                disabled={isFrontendPreview || (registerMutation.isPending || selectedCaps.length === 0)}
                 onClick={() => registerMutation.mutate()}
                 data-testid="button-register-onboard"
               >

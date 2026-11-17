@@ -1,3 +1,6 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { frontendPreviewQueryOptions } from "@/lib/frontendPreview";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -122,6 +125,7 @@ function AgentDetailModal({ agent }: { agent: Agent }) {
       const res = await apiRequest("GET", `/api/agents/${agent.id}/history`);
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   const { data: achievementsData } = useQuery<Achievement[]>({
@@ -130,6 +134,7 @@ function AgentDetailModal({ agent }: { agent: Agent }) {
       const res = await apiRequest("GET", `/api/agents/${agent.id}/achievements`);
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   const badges = achievementsData?.map(a => a.badge) || [];
@@ -269,6 +274,7 @@ export default function Agents() {
 
   const { data: agents, isLoading } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
+    ...frontendPreviewQueryOptions,
   });
 
   const registerForm = useForm<RegisterForm>({
@@ -336,7 +342,7 @@ export default function Agents() {
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <Users className="w-5 h-5 text-primary" />
@@ -346,7 +352,7 @@ export default function Agents() {
         </div>
         <Dialog open={registerOpen} onOpenChange={(open) => { setRegisterOpen(open); if (!open) { setNewApiKey(null); setApiKeyCopied(false); } }}>
           <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5" data-testid="button-register-agent">
+            <Button disabled={isFrontendPreview} title={isFrontendPreview ? "Registration unavailable in preview" : undefined} size="sm" className="gap-1.5" data-testid="button-register-agent">
               <UserPlus className="w-3.5 h-3.5" />
               Register Agent
             </Button>
@@ -389,7 +395,7 @@ export default function Agents() {
               </div>
             ) : (
             <Form {...registerForm}>
-              <form onSubmit={registerForm.handleSubmit(d => registerMutation.mutate(d))} className="flex flex-col gap-3">
+              <form onSubmit={registerForm.handleSubmit(d => registerMutation.mutate(d))} className="flex flex-col gap-3"><fieldset disabled={isFrontendPreview} className="contents">
                 <FormField
                   control={registerForm.control}
                   name="name"
@@ -461,10 +467,10 @@ export default function Agents() {
                     <p className="text-xs text-destructive mt-1">{registerForm.formState.errors.capabilities.message}</p>
                   )}
                 </div>
-                <Button type="submit" disabled={registerMutation.isPending} className="w-full h-8 text-sm" data-testid="button-submit-register">
+                <Button type="submit" disabled={isFrontendPreview || (registerMutation.isPending)} className="w-full h-8 text-sm" data-testid="button-submit-register">
                   {registerMutation.isPending ? "Registering..." : "Register Agent"}
                 </Button>
-              </form>
+              </fieldset></form>
             </Form>
             )}
           </DialogContent>
@@ -521,7 +527,7 @@ export default function Agents() {
 
       {/* Agent Count */}
       <p className="text-xs text-muted-foreground -mt-2">
-        {filteredAgents.length} agent{filteredAgents.length !== 1 ? "s" : ""} found
+        {isFrontendPreview ? "Agent count unavailable in preview" : `${filteredAgents.length} agent${filteredAgents.length !== 1 ? "s" : ""} found`}
       </p>
 
       {/* Agent Grid */}
@@ -536,12 +542,12 @@ export default function Agents() {
           <Users className="w-10 h-10 text-muted-foreground/30" />
           <div>
             <p className="text-sm font-medium text-muted-foreground">
-              {search || typeFilter !== 'all' || tierFilter !== 'all' || statusFilter !== 'all'
+              {isFrontendPreview ? "Agent data unavailable in preview" : search || typeFilter !== 'all' || tierFilter !== 'all' || statusFilter !== 'all'
                 ? "No agents match your filters"
                 : "No agents registered yet"}
             </p>
             <p className="text-xs text-muted-foreground/60 mt-1">
-              {search || typeFilter !== 'all' ? "Try adjusting your filters" : "Be the first to join the WAO — register your agent above"}
+              {isFrontendPreview ? "Registration and live agent data require the application server." : search || typeFilter !== 'all' ? "Try adjusting your filters" : "Be the first to join the WAO — register your agent above"}
             </p>
           </div>
         </div>
@@ -583,6 +589,7 @@ function AgentCardWithSparkline({
       const res = await apiRequest("GET", `/api/agents/${agent.id}/history`);
       return res.json();
     },
+    ...frontendPreviewQueryOptions,
   });
 
   const sparkData = (history || []).slice(-10).map(h => h.reputation);

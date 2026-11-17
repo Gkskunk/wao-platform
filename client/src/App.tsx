@@ -1,3 +1,4 @@
+pyenv: cannot rehash: /Users/gregkerr/.pyenv/shims isn't writable
 import { Switch, Route, Router, Link, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -26,7 +27,10 @@ import WisdomBoard from "@/pages/WisdomBoard";
 import Founders from "@/pages/Founders";
 import Chat from "@/pages/Chat";
 import Build from "@/pages/Build";
+import { WorkspaceAccount } from "@/components/WorkspaceAccount";
 import NotFound from "@/pages/not-found";
+import { isFrontendPreview } from "@/lib/frontendPreview";
+import { FrontendPreviewBanner, PreviewUnavailable } from "@/components/FrontendPreview";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -74,8 +78,9 @@ function Sidebar({ onClose, theme, onToggleTheme }: SidebarProps) {
         <div className="h-px bg-sidebar-border" />
       </div>
 
+      {!isFrontendPreview && <a href="/workspace" className="mx-2 mb-3 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary">Workflow Studio ↗</a>}
       {/* Main Nav */}
-      <nav className="flex-1 px-2 py-2 flex flex-col gap-0.5">
+      <nav className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = location === href || (href !== "/" && location.startsWith(href));
           return (
@@ -124,6 +129,8 @@ function Sidebar({ onClose, theme, onToggleTheme }: SidebarProps) {
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-sidebar-border">
+        <WorkspaceAccount />
+        <a href="/agent-access.html" className="text-xs text-muted-foreground hover:underline">Agent access</a>
         {/* Theme toggle */}
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
@@ -138,7 +145,7 @@ function Sidebar({ onClose, theme, onToggleTheme }: SidebarProps) {
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-400 dot-pulse" />
-          <span className="text-xs text-muted-foreground">WAO Network Active</span>
+          <span className="text-xs text-muted-foreground">{isFrontendPreview ? "Preview · server offline" : "WAO Network Active"}</span>
         </div>
       </div>
     </div>
@@ -149,7 +156,7 @@ function Layout({ children, theme, onToggleTheme, fullHeight }: { children: Reac
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-full overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden md:flex w-52 flex-shrink-0 flex-col">
         <Sidebar theme={theme} onToggleTheme={onToggleTheme} />
@@ -234,7 +241,7 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
   if (location === "/onboard") {
     return (
       <Switch>
-        <Route path="/onboard" component={Onboard} />
+        <Route path="/onboard">{isFrontendPreview ? <PreviewUnavailable title="Registration unavailable"><Link href="/" className="mt-4 inline-block underline">Back to dashboard</Link></PreviewUnavailable> : <Onboard />}</Route>
       </Switch>
     );
   }
@@ -243,7 +250,7 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
   if (location === "/chat") {
     return (
       <Layout theme={theme} onToggleTheme={onToggleTheme} fullHeight>
-        <Chat />
+        {isFrontendPreview ? <PreviewUnavailable title="Chat unavailable" /> : <Chat />}
       </Layout>
     );
   }
@@ -259,7 +266,7 @@ function AppRouter({ theme, onToggleTheme }: { theme: "dark" | "light"; onToggle
         <Route path="/wisdom" component={WisdomVault} />
         <Route path="/wisdom-board" component={WisdomBoard} />
         <Route path="/founders" component={Founders} />
-        <Route path="/governance" component={Governance} />
+        <Route path="/governance">{isFrontendPreview ? <PreviewUnavailable title="Governance data unavailable" /> : <Governance />}</Route>
         <Route path="/constitution" component={Constitution} />
         <Route path="/build" component={Build} />
         <Route path="/docs" component={Docs} />
@@ -275,12 +282,16 @@ function App() {
       <TooltipProvider>
         <ThemeProvider>
           {(theme, toggleTheme) => (
-            <>
+            <div className="flex h-dvh flex-col overflow-hidden">
+              <FrontendPreviewBanner />
+              {!isFrontendPreview && <div className="shrink-0 bg-primary/10 border-b border-primary/20 px-4 py-2 text-center text-xs text-primary">Local MVP · Workflow Studio enforces versioned reviews and human acceptance. Legacy sample scenarios remain available. No financial transactions are enabled.</div>}
+              <div className="min-h-0 flex-1">
               <Toaster />
               <Router hook={useHashLocation}>
                 <AppRouter theme={theme} onToggleTheme={toggleTheme} />
               </Router>
-            </>
+              </div>
+            </div>
           )}
         </ThemeProvider>
       </TooltipProvider>
